@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <netinet/in.h>
-#include <zconf.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 struct scanner_data_t {
     char my_ip[16]; // just IPv4 for now
@@ -122,12 +123,51 @@ construct_init_message(unsigned char *buffer, size_t buf_len,
     return 0;
 }
 
+int get_local_ip(char buffer[64]) {
+    struct sockaddr_in serv;
+    int rc = -1;
+
+    int sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock < 0) {
+        perror("socket");
+        return -1;
+    }
+
+    memset(&serv, 0, sizeof(serv));
+    serv.sin_family = AF_INET;
+    serv.sin_addr.s_addr = inet_addr("8.8.8.8"); // google dns server
+    serv.sin_port = htons(53);
+
+    if (connect(sock, (const struct sockaddr *) &serv, sizeof(serv)) != 0) {
+        perror("connect");
+        goto out;
+    }
+
+    struct sockaddr_in name;
+    socklen_t namelen = sizeof(name);
+    if (getsockname(sock, (struct sockaddr *) &name, &namelen) != 0) {
+        perror("getsockname");
+        goto out;
+    }
+
+    const char *ret = inet_ntop(AF_INET, &name.sin_addr, buffer, 100);
+
+    if (ret) {
+        rc = 0;
+    } else {
+        perror("inet_ntop");
+    }
+out:
+    close(sock);
+    return rc;
+}
+
 int
 main(int argc, char *argv[])
 {
     unsigned char buf[2048] = {}; //TODO either 2048 or 2000 (max packet len)
-    struct scanner_data_t d = {
-        .my_ip = "10.0.0.100", .dest_ip = "10.0.0.149",
+    struct scanner_data_t scanner_data = {
+        .dest_ip = "10.0.0.149",
         .name = "open-source-bro",
         .options_num = 3,
         .options = {
@@ -135,7 +175,21 @@ main(int argc, char *argv[])
             {.func = "EMAIL", .appnum = 2},
             {.func = "FILE", .appnum = 5}
         }};
-    unsigned char *ret = construct_init_message(buf, sizeof(buf), &d);
+
+    unsigned char *ret;
+    size_t ip_len;
+
+    get_local_ip(buf);
+    ip_len = strlen((char *) buf);
+
+    if (ip_len < 1 || ip_len > 15) {
+        fprintf(stderr, "Couldn't get valid local ip address\n");
+        return -1;
+    }
+
+    memcpy(scanner_data.my_ip, buf, 16);
+
+    ret = construct_init_message(buf, sizeof(buf), &scanner_data);
     write(1, buf, 2048);
     return ret != NULL;
 }
