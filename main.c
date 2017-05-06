@@ -35,26 +35,19 @@ construct_option_string(unsigned char *buffer, size_t buf_len,
     buf_str_len_pos = buf_cur;
     buf_cur += 1;
 
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "TYPE=BR;");
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "BUTTON=SCAN;");
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "USER=\"%s\";", scanner_data->name);
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "FUNC=%s;", option->func);
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "HOST=%s:54925;", scanner_data->my_ip);
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "APPNUM=%d;", option->appnum);
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "DURATION=360;");
-    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
-                        "CC=1;");
+#define bufcat(args...) buf_cur += snprintf(buf_cur, buf_end - buf_cur, args)
+    bufcat("TYPE=BR;");
+    bufcat("BUTTON=SCAN;");
+    bufcat("USER=\"%s\";", scanner_data->name);
+    bufcat("FUNC=%s;", option->func);
+    bufcat("HOST=%s:54925;", scanner_data->my_ip);
+    bufcat("APPNUM=%d;", option->appnum);
+    bufcat("DURATION=360;");
+    bufcat("CC=1;");
     //BRID field - unimplemented
+#undef bufcat
 
     *buf_str_len_pos = (unsigned char) (buf_cur - buf_str_len_pos + 1);
-
     return (int) (buf_cur - buffer);
 }
 
