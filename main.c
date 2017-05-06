@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <netinet/in.h>
+#include <zconf.h>
 
 struct scanner_data_t {
     char my_ip[16]; // just IPv4 for now
@@ -13,9 +14,9 @@ struct scanner_data_t {
     } options[8];
 };
 
-static unsigned char *
+static int
 construct_option_string(unsigned char *buffer, size_t buf_len,
-                        struct scanner_data_option_t *option_data)
+                        struct scanner_data_t *scanner_data, int option_id)
 {
     static const unsigned char data_option_layout[] = {
         0x30, 0x77, 0x06, 0x0f, 0x2b, 0x06, 0x01, 0x04,
@@ -26,9 +27,35 @@ construct_option_string(unsigned char *buffer, size_t buf_len,
     };
 
     unsigned char *buf_cur = buffer;
+    unsigned char *buf_str_len_pos;
+    unsigned char *buf_end = buffer + buf_len;
+    struct scanner_data_option_t *option = &scanner_data->options[option_id];
 
     buf_cur = memcpy(buf_cur, data_option_layout, 20) + 20;
-    //TODO ...
+    buf_str_len_pos = buf_cur;
+    buf_cur += 1;
+
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "TYPE=BR;");
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "BUTTON=SCAN;");
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "USER=\"%s\";", scanner_data->name);
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "FUNC=%s;", option->func);
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "HOST=%s:54925;", scanner_data->my_ip);
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "APPNUM=%d;", option->appnum);
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "DURATION=360;");
+    buf_cur += snprintf(buf_cur, buf_end - buf_cur,
+                        "CC=1;");
+    //BRID field - unimplemented
+
+    *buf_str_len_pos = (unsigned char) (buf_cur - buf_str_len_pos + 1);
+
+    return (int) (buf_cur - buffer);
 }
 
 unsigned char *
@@ -50,43 +77,53 @@ construct_init_message(unsigned char *buffer, size_t buf_len,
          * first byte is length (of value n), the rest is actual data
          * it seems to be either "internal" or "public" */
         [6] = 0xA3, 0x82, /* magic, beginning of some new section */
-        /* 2 bytes - remaining packet len starting from prev magic (inclusive) */
+        /* 2 bytes - remaining packet len starting from prev magic (inclusive)*/
         [8] = 0x02, 0x02,
         /* 2 bytes - !! unknown !! might be related to the number of options */
         [10] = 0x02, 0x01, 0x00, 0x02, 0x01, 0x00,
         [16] = 0x30, 0x82, /* magic, beginning of a new section */
-        /* 2 bytes - remaining packet len starting from prev magic (inclusive) */
+        /* 2 bytes - remaining packet len starting from prev magic (inclusive)*/
     };
 
     const char *msg_type = "internal";
     size_t msg_type_len = strlen(msg_type);
     unsigned char *buf_cur = buffer;
-    unsigned char *buffer_end = buffer + buf_len;
-    short magic_num_off10 = htons(0xE5);
+    unsigned char *buf_end = buffer + buf_len;
+    int16_t tmp_16 = htons(0xE5); /* for now unknown variable from offset 10 */
     int i;
 
     /* we will increment the *buffer* ptr as we write to it,
      * but not all data can be written sequentially,
-     * hence these pointers */
-    unsigned char *dynamic_buffer_positions[3];
+     * hence these pointers *dynamic_buffer_positions* */
+    unsigned char *dyn_buf_pos[3];
 
     buf_cur = memcpy(buf_cur, data_header_layout, 2) + 2;
-    dynamic_buffer_positions[0] = buf_cur;
+    dyn_buf_pos[0] = buf_cur;
     buf_cur += 2;
     buf_cur = memcpy(buf_cur, &data_header_layout[2], 4) + 4;
     *buf_cur = (unsigned char) msg_type_len;
     buf_cur += 1;
-    buf_cur = memcpy(buf_cur, msg_type, buf_cur[5]) + msg_type_len;
+    buf_cur = memcpy(buf_cur, msg_type, msg_type_len) + msg_type_len;
     buf_cur = memcpy(buf_cur, &data_header_layout[6], 2) + 2;
-    dynamic_buffer_positions[1] = buf_cur;
+    dyn_buf_pos[1] = buf_cur;
     buf_cur += 2;
     buf_cur = memcpy(buf_cur, &data_header_layout[8], 2) + 2;
-    buf_cur = memcpy(buf_cur, &magic_num_off10, 2);
+    buf_cur = memcpy(buf_cur, &tmp_16, 2) + 2;
     buf_cur = memcpy(buf_cur, &data_header_layout[10], 8) + 8;
-    dynamic_buffer_positions[3] = buf_cur;
+    dyn_buf_pos[3] = buf_cur;
+    buf_cur += 2;
 
     for (i = 0; i < scanner_data->options_num; ++i) {
-        buf_cur = construct_option_string(buf_cur, buffer_end - buf_cur, &scanner_data->options[i]);
+        buf_cur += construct_option_string(buf_cur, buf_end - buf_cur,
+                                           scanner_data, i);
+    }
+
+    for (i = 0; i < sizeof(dyn_buf_pos) / sizeof(dyn_buf_pos[0]); ++i) {
+        tmp_16 = htons((uint16_t) (buf_cur - dyn_buf_pos[i] + 2));
+        /* +2 as we know that each dyn_buf_pos is
+         * preceeded by magic value of length 2 */
+
+        memcpy(dyn_buf_pos[i], &tmp_16, 2);
     }
 
     return 0;
@@ -96,7 +133,16 @@ int
 main(int argc, char *argv[])
 {
     unsigned char buf[2048] = {}; //TODO either 2048 or 2000 (max packet len)
-    struct scanner_data_t d = {};
+    struct scanner_data_t d = {
+        .my_ip = "10.0.0.100", .dest_ip = "10.0.0.149",
+        .name = "open-source-bro",
+        .options_num = 3,
+        .options = {
+            {.func = "IMAGE", .appnum = 1},
+            {.func = "EMAIL", .appnum = 2},
+            {.func = "FILE", .appnum = 5}
+        }};
     unsigned char *ret = construct_init_message(buf, sizeof(buf), &d);
+    write(1, buf, 2048);
     return ret != NULL;
 }
