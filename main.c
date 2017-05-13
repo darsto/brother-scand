@@ -105,7 +105,7 @@ construct_init_message(unsigned char *buffer, size_t buf_len,
     buf_cur = memcpy(buf_cur, &data_header_layout[8], 2) + 2;
     buf_cur = memcpy(buf_cur, &tmp_16, 2) + 2;
     buf_cur = memcpy(buf_cur, &data_header_layout[10], 8) + 8;
-    dyn_buf_pos[3] = buf_cur;
+    dyn_buf_pos[2] = buf_cur;
     buf_cur += 2;
 
     for (i = 0; i < scanner_data->options_num; ++i) {
@@ -121,7 +121,7 @@ construct_init_message(unsigned char *buffer, size_t buf_len,
         memcpy(dyn_buf_pos[i], &tmp_16, 2);
     }
 
-    return 0;
+    return buf_cur;
 }
 
 int get_local_ip(char buffer[64]) {
@@ -192,8 +192,8 @@ main(int argc, char *argv[])
 
     ret = construct_init_message(buf, sizeof(buf), &scanner_data);
     
-    hexdump("udp data", buf, 406);
+    hexdump("udp data", buf, ret - buf);
 
     write(1, buf, 2048);
-    return ret != NULL;
+    return ret == NULL;
 }
