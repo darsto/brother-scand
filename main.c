@@ -165,7 +165,7 @@ out:
 int
 main(int argc, char *argv[])
 {
-    unsigned char buf[2048] = {}; //TODO either 2048 or 2000 (max packet len)
+    unsigned char buf[2048] = {};
     struct scanner_data_t scanner_data = {
         .dest_ip = "10.0.0.149",
         .name = "open-source-bro",
