@@ -9,6 +9,6 @@
 
 #include <stdio.h>
 
-void hexdump(const char *title, const char *data, int len);
+void hexdump(const char *title, const void *data, int len);
 
 #endif //DCP_J105_LOG_H

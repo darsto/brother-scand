@@ -69,14 +69,15 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
 }
 
 void
-hexdump(const char *title, const char *data, int len)
+hexdump(const char *title, const void *data, int len)
 {
-    const char *data_start = data;
-    const char *data_end = data + len;
+    const char *data_ptr = data;
+    const char *data_start = data_ptr;
+    const char *data_end = data_ptr + len;
 
     printf("%s = {\n", title);
-    while (data < data_end) {
-        data += hexdump_line(data, data_start, data_end);
+    while (data_ptr < data_end) {
+        data_ptr += hexdump_line(data_ptr, data_start, data_end);
     }
     printf("}\n");
 }
