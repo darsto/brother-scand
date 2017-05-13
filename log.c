@@ -69,7 +69,7 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
 }
 
 void
-hexdump(const char *title, const void *data, int len)
+hexdump(const char *title, const void *data, size_t len)
 {
     const char *data_ptr = data;
     const char *data_start = data_ptr;
