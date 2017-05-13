@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include "log.h"
 
 struct scanner_data_t {
     char my_ip[16]; // just IPv4 for now
@@ -190,6 +191,9 @@ main(int argc, char *argv[])
     memcpy(scanner_data.my_ip, buf, 16);
 
     ret = construct_init_message(buf, sizeof(buf), &scanner_data);
+    
+    hexdump("udp data", buf, 406);
+
     write(1, buf, 2048);
     return ret != NULL;
 }

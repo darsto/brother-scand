@@ -3,5 +3,5 @@ project(brother)
 
 set(CMAKE_C_STANDARD 11)
 
-set(SOURCE_FILES main.c concurrent_queue.h concurrent_queue.c)
+set(SOURCE_FILES main.c concurrent_queue.h concurrent_queue.c log.h log.c)
 add_executable(brother ${SOURCE_FILES})
