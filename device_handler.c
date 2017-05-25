@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <signal.h>
 #include "device_handler.h"
 #include "concurrent_queue.h"
 #include "log.h"
@@ -19,6 +20,7 @@ static int sockfd;
 static struct concurrent_queue *events;
 static bool running = true;
 pthread_mutex_t mutex;
+pthread_t tid;
 
 typedef enum {
     EVENT_STOP,
@@ -173,29 +175,30 @@ register_dev(struct event_add_dev *event)
 
     printf("Sending msg to %s:\n", event->scanner_data.dest_ip);
     hexdump("payload", buf, (size_t) recv_len);
-    sent_len = sendto(
-        sockfd, buf, recv_len, 0,
-        (struct sockaddr *) &server,
-        slen);
+    sent_len = sendto(sockfd, buf, recv_len, 0,
+                      (struct sockaddr *) &server,
+                      slen);
     if (sent_len < 0) {
         perror("sendto");
         return;
     }
 
-    printf(
-        "Message sent. (%zd/%zd). Waiting for the reply...\n", recv_len,
-        sent_len);
+    printf("Message sent. (%zd/%zd). Waiting for the reply...\n", recv_len,
+           sent_len);
 
-    recv_len = recvfrom(
-        sockfd, buf, 2048, 0,
-        (struct sockaddr *) &server, &slen);
+    recv_len = recvfrom(sockfd, buf, 2048, 0,
+                        (struct sockaddr *) &server, &slen);
     if (recv_len < 0) {
         perror("recvfrom");
         return;
     }
 
     printf("Received reply from %s:\n", event->scanner_data.dest_ip);
-    hexdump("msg", buf, (size_t) recv_len);
+    hexdump("payload", buf, (size_t) recv_len);
+
+    if (sent_len != recv_len) {
+        fprintf(stderr, "Sent/Received length differs. Should be equal.\n");
+    }
 }
 
 static void
@@ -204,6 +207,7 @@ process_event(struct event *event)
     switch (event->type) {
         case EVENT_STOP:
             running = false;
+            pthread_kill(tid, SIGUSR1);
             break;
         case EVENT_ADD_DEV:
             register_dev((struct event_add_dev *) event);
@@ -221,7 +225,6 @@ device_handler_destroy()
     }
 
     free(events);
-
     pthread_mutex_destroy(&mutex);
 }
 
@@ -232,6 +235,11 @@ enqueue_event(struct event *event)
     pthread_mutex_unlock(&mutex);
 }
 
+static void
+sig_handler(int signo)
+{
+}
+
 void *
 device_handler_thread_f(void *args)
 {
@@ -239,6 +247,9 @@ device_handler_thread_f(void *args)
     struct event *event;
     int rc = -1;
     int *status = args;
+
+    if (signal(SIGUSR1, sig_handler) == SIG_ERR)
+        fprintf(stderr, "Failed to bind SIGINT handler.\n");
 
     sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sockfd == -1) {
@@ -275,6 +286,8 @@ cleanup:
     close(sockfd);
 out:
     *status = rc;
+    printf("Device handler exiting...\n");
+    fflush(stdout);
     pthread_exit(NULL);
 }
 
@@ -287,9 +300,8 @@ device_handler_init()
     events->size = 32;
 
     if (!events) {
-        fprintf(
-            stderr,
-            "Fatal: calloc() failed, cannot start device handler.\n");
+        fprintf(stderr,
+                "Fatal: calloc() failed, cannot start device handler.\n");
         return -1;
     }
 
@@ -299,8 +311,6 @@ device_handler_init()
 void
 device_handler_run(int *exit_status)
 {
-    pthread_t tid;
-
     pthread_create(&tid, NULL, device_handler_thread_f, exit_status);
     pthread_join(tid, NULL);
 }
@@ -327,13 +337,13 @@ device_handler_stop()
     struct event *event = malloc(sizeof(*event));
 
     if (!event) {
-        fprintf(
-            stderr,
-            "Fatal: malloc() failed, cannot stop device handler.\n");
+        fprintf(stderr,
+                "Fatal: malloc() failed, cannot stop device handler.\n");
         return;
     }
 
     event->type = EVENT_STOP;
     enqueue_event(event);
+    pthread_kill(tid, SIGUSR1);
 }
 

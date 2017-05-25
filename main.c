@@ -51,29 +51,10 @@ out:
 int device_handler_status = 0;
 
 static void
-wait_for_dev_handler()
-{
-    int i = 0;
-
-    while (device_handler_status == 0 && i < 10) {
-        usleep(1000 * 500);
-        ++i;
-    }
-
-    if (i == 5) {
-        fprintf(
-            stdout,
-            "Device handler thread hasn't finished in 5 secs. Force-aborting...");
-    }
-}
-
-static void
 sig_handler(int signo)
 {
     printf("Received signal %d, quitting..\n", signo);
     device_handler_stop();
-    wait_for_dev_handler();
-    exit(device_handler_status == 1 ? 0 : -1);
 }
 
 int
@@ -109,6 +90,5 @@ main(int argc, char *argv[])
         fprintf(stderr, "Failed to bind SIGINT handler.\n");
 
     device_handler_run(&device_handler_status);
-    wait_for_dev_handler();
     return device_handler_status == 1 ? 0 : -1;
 }
