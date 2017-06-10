@@ -10,7 +10,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -pedantic -Wall -Wextra \
     -Wcast-qual -Wshadow -Wunreachable-code -Wlogical-op -Wfloat-equal \
     -Wstrict-aliasing=2 -Wredundant-decls -Wold-style-definition")
 
-set(SOURCE_FILES main.c concurrent_queue.h concurrent_queue.c log.h log.c device_handler.h device_handler.c ber.c ber.h)
+set(SOURCE_FILES main.c con_queue.h con_queue.c log.h log.c device_handler.h device_handler.c event_thread.c event_thread.h iputils.c iputils.h)
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
 
 target_link_libraries(${PROJECT_NAME} pthread)
