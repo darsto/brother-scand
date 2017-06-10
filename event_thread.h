@@ -7,6 +7,9 @@
 #ifndef BROTHER_EVENT_THREAD_H
 #define BROTHER_EVENT_THREAD_H
 
+void event_thread_lib_init();
+void event_thread_lib_shutdown();
+
 size_t event_thread_create(const char *name, void (*update_cb)(void *, void *),
                            void *arg1, void *arg2);
 int event_thread_enqueue_event(size_t thread_id, void (*callback)(void *, void *),

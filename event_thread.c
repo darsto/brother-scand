@@ -18,16 +18,11 @@
 
 #define MAX_EVENT_THREADS 32
 
-enum event_thread_state {
-    EVENT_THREAD_S_RUNNING,
-    EVENT_THREAD_S_STOPPED,
-};
-
 struct event_thread {
-    enum event_thread_state state;
+    bool running;
     char *name;
     struct concurrent_queue *events;
-    pthread_t pthread_id;
+    pthread_t tid;
 };
 
 struct event {
@@ -112,7 +107,7 @@ _event_thread_loop(void *arg)
         goto out;
     }
     
-    while (thread->state != EVENT_THREAD_S_STOPPED) {
+    while (thread->running) {
         if (update_ev->callback) {
             update_ev->callback(update_ev->arg1, update_ev->arg2);
         }
@@ -139,7 +134,7 @@ event_thread_create(const char *name, void (*update_cb)(void *, void *), void *a
     thread_id = atomic_fetch_add(&g_thread_cnt, 1);
     thread = &g_threads[thread_id - 1];
     
-    thread->state = EVENT_THREAD_S_RUNNING;
+    thread->running = true;
     thread->name = strdup(name);
     if (!thread->name) {
         fprintf(stderr, "Fatal: strdup() failed, cannot start event thread.\n");
@@ -155,7 +150,7 @@ event_thread_create(const char *name, void (*update_cb)(void *, void *), void *a
     thread->events->size = 32;
 
     event_thread_enqueue_event(thread_id, update_cb, arg1, arg2);
-    if (pthread_create(&thread->pthread_id, NULL, _event_thread_loop, thread) != 0) {
+    if (pthread_create(&thread->tid, NULL, _event_thread_loop, thread) != 0) {
         fprintf(stderr, "Fatal: pthread_create() failed, cannot start event thread.\n");
         goto events_err;
     }
@@ -175,7 +170,7 @@ _event_thread_stop_cb(void *arg1, void *arg2 __attribute__((unused)))
 {
     struct event_thread *thread = arg1;
     
-    thread->state = EVENT_THREAD_S_STOPPED;
+    thread->running = false;
 }
 
 int
@@ -189,12 +184,33 @@ event_thread_stop(size_t thread_id)
         return -1;
     }
     
-    
     if (event_thread_enqueue_event(thread_id, _event_thread_stop_cb, thread, NULL) != 0) {
         fprintf(stderr, "Failed to stop thread %zu.\n", thread_id);
         return -1;
     }
 
-    pthread_kill(thread->pthread_id, SIGUSR1);
+    pthread_kill(thread->tid, SIGUSR1);
     return 0;
 }
+
+void 
+event_thread_lib_init() {
+    atomic_init(&g_thread_cnt, 0);
+}
+
+void
+event_thread_lib_shutdown() {
+    struct event_thread *thread;
+    size_t thread_cnt = atomic_load(&g_thread_cnt);
+    size_t i;
+    
+    for (i = 0; i < thread_cnt; ++i) {
+        thread = &g_threads[i];
+        if (thread->running) {
+            event_thread_stop(i + 1);
+            pthread_join(thread->tid, NULL);
+        }
+    }
+}
+
+void event_thread_lib_shutdown();
