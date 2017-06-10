@@ -128,7 +128,7 @@ event_thread_create(const char *name, void (*update_cb)(void *, void *), void *a
     struct event_thread *thread;
     size_t thread_id;
 
-    thread_id = atomic_fetch_add(&g_thread_cnt, 1);
+    thread_id = atomic_fetch_add(&g_thread_cnt, 1) + 1;
     thread = &g_threads[thread_id - 1];
     
     thread->running = true;
