@@ -196,12 +196,23 @@ event_thread_lib_init() {
 }
 
 void
+event_thread_lib_wait() {
+    struct event_thread *thread;
+    size_t i;
+
+    for (i = 0; i < MAX_EVENT_THREADS; ++i) {
+        thread = &g_threads[i];
+        if (thread->running) {
+            pthread_join(thread->tid, NULL);
+        }
+    }}
+
+void
 event_thread_lib_shutdown() {
     struct event_thread *thread;
-    size_t thread_cnt = atomic_load(&g_thread_cnt);
     size_t i;
     
-    for (i = 0; i < thread_cnt; ++i) {
+    for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
         if (thread->running) {
             event_thread_stop(i + 1);

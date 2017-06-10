@@ -8,6 +8,7 @@
 #define BROTHER_EVENT_THREAD_H
 
 void event_thread_lib_init();
+void event_thread_lib_wait();
 void event_thread_lib_shutdown();
 
 size_t event_thread_create(const char *name, void (*update_cb)(void *, void *),
