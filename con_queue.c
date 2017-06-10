@@ -4,15 +4,19 @@
  * that can be found in the LICENSE file.
  */
 
-#include "concurrent_queue.h"
+#include "con_queue.h"
 
-static size_t next(struct concurrent_queue *queue, size_t num) {
+static size_t
+con_queue_next(struct con_queue *queue, size_t num)
+{
     return ++num % queue->size;
 }
 
-int con_queue_push(struct concurrent_queue *queue, void *element) {
+int
+con_queue_push(struct con_queue *queue, void *element)
+{
     size_t currentTail = atomic_load(&queue->tail);
-    size_t newTail = next(queue, currentTail);
+    size_t newTail = con_queue_next(queue, currentTail);
 
     if (newTail == atomic_load(&queue->head)) {
         return -1;
@@ -24,7 +28,9 @@ int con_queue_push(struct concurrent_queue *queue, void *element) {
     return 0;
 }
 
-int con_queue_pop(struct concurrent_queue *queue, void **element) {
+int
+con_queue_pop(struct con_queue *queue, void **element)
+{
     size_t currentHead = atomic_load(&queue->head);
     
     if (currentHead == atomic_load(&queue->tail)) {
@@ -32,7 +38,7 @@ int con_queue_pop(struct concurrent_queue *queue, void **element) {
     }
 
     *element = queue->data[currentHead];
-    atomic_store(&queue->head, next(queue, currentHead));
+    atomic_store(&queue->head, con_queue_next(queue, currentHead));
     
     return 0;
 }

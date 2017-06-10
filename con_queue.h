@@ -4,20 +4,20 @@
  * Feel free to reuse, modify and distribute it.
  */
 
-#ifndef DARSTO_UTILS_CONCURRENTQUEUE_H
-#define DARSTO_UTILS_CONCURRENTQUEUE_H
+#ifndef BROTHER_CONQUEUE_H
+#define BROTHER_CONQUEUE_H
 
 #include <stdatomic.h>
 #include <stddef.h>
 #include <stdbool.h>
 
-struct concurrent_queue {
+struct con_queue {
     atomic_size_t head, tail;
     size_t size;
-    void *data[0];
+    void *data[];
 };
 
-int con_queue_push(struct concurrent_queue *queue, void *element);
-int con_queue_pop(struct concurrent_queue *queue, void **element);
+int con_queue_push(struct con_queue *queue, void *element);
+int con_queue_pop(struct con_queue *queue, void **element);
 
-#endif //DARSTO_UTILS_CONCURRENTQUEUE_H
+#endif //BROTHER_CONQUEUE_H

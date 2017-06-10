@@ -11,14 +11,14 @@
 #include <pthread.h>
 #include <signal.h>
 #include "event_thread.h"
-#include "concurrent_queue.h"
+#include "con_queue.h"
 
 #define MAX_EVENT_THREADS 32
 
 struct event_thread {
     bool running;
     char *name;
-    struct concurrent_queue *events;
+    struct con_queue *events;
     pthread_t tid;
 };
 
