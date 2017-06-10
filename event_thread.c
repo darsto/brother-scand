@@ -216,9 +216,10 @@ event_thread_lib_shutdown() {
         thread = &g_threads[i];
         if (thread->running) {
             event_thread_stop(i + 1);
-            pthread_join(thread->tid, NULL);
         }
     }
+
+    event_thread_lib_wait();
 }
 
 void event_thread_lib_shutdown();
