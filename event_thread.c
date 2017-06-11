@@ -70,7 +70,8 @@ event_thread_enqueue_event(size_t thread_id, void (*callback)(void *, void *), v
 }
 
 static void
-event_thread_destroy(struct event_thread *thread) {
+event_thread_destroy(struct event_thread *thread)
+{
     struct event *event;
 
     while (con_queue_pop(thread->events, (void **) &event) == 0) {
@@ -191,12 +192,14 @@ event_thread_stop(size_t thread_id)
 }
 
 void 
-event_thread_lib_init() {
+event_thread_lib_init()
+{
     atomic_init(&g_thread_cnt, 0);
 }
 
 void
-event_thread_lib_wait() {
+event_thread_lib_wait()
+{
     struct event_thread *thread;
     size_t i;
 
@@ -205,10 +208,12 @@ event_thread_lib_wait() {
         if (thread->running) {
             pthread_join(thread->tid, NULL);
         }
-    }}
+    }
+}
 
 void
-event_thread_lib_shutdown() {
+event_thread_lib_shutdown()
+{
     struct event_thread *thread;
     size_t i;
     
