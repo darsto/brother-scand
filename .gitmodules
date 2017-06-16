@@ -1,0 +1,3 @@
+[submodule "ber"]
+	path = ber
+	url = git@github.com:darsto/ber.git
