@@ -11,8 +11,11 @@ void event_thread_lib_init(void);
 void event_thread_lib_wait(void);
 void event_thread_lib_shutdown(void);
 
-int event_thread_create(const char *name, void (*update_cb)(void *, void *),
-                           void *arg1, void *arg2);
+int event_thread_create(const char *name);
+int event_thread_set_update_cb(int thread_id, void (*update_cb)(void *, void *),
+                               void *arg1, void *arg2);
+int event_thread_set_stop_cb(int thread_id, void (*stop_cb)(void *, void *),
+                             void *arg1, void *arg2);
 int event_thread_enqueue_event(int thread_id, void (*callback)(void *, void *),
                                void *arg1, void *arg2);
 int event_thread_stop(int thread_id);
