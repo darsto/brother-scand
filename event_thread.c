@@ -286,7 +286,6 @@ event_thread_lib_shutdown_cb(void *arg)
         }
     }
     
-    event_thread_lib_wait();
     return NULL;
 }
 
