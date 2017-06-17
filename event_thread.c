@@ -82,7 +82,7 @@ event_thread_destroy(struct event_thread *thread)
 }
 
 static void
-sig_handler(int signo __attribute__((unused)))
+sig_handler(int signo)
 {
     /** Interrupt any blocking IO / poll */
 }
@@ -163,7 +163,7 @@ err:
 }
 
 static void
-event_thread_stop_cb(void *arg1, void *arg2 __attribute__((unused)))
+event_thread_stop_cb(void *arg1, void *arg2)
 {
     struct event_thread *thread = arg1;
     
