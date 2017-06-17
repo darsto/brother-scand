@@ -273,18 +273,30 @@ event_thread_lib_wait(void)
     }
 }
 
-void
-event_thread_lib_shutdown(void)
+static void *
+event_thread_lib_shutdown_cb(void *arg)
 {
     struct event_thread *thread;
     int i;
-    
+
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
         if (thread->running) {
             event_thread_stop(i);
         }
     }
-
+    
     event_thread_lib_wait();
+    return NULL;
+}
+
+void
+event_thread_lib_shutdown(void)
+{
+    pthread_t tid;
+    if (pthread_create(&tid, NULL, event_thread_lib_shutdown_cb, NULL) != 0) {
+        fprintf(stderr, "Fatal: pthread_create() failed, cannot start shutdown thread.\n");
+        abort();
+    }
+    pthread_detach(tid);
 }

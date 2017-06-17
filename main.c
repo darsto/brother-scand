@@ -15,7 +15,6 @@ sig_handler(int signo)
 {
     printf("Received signal %d, quitting..\n", signo);
     event_thread_lib_shutdown();
-    exit(signo);
 }
 
 int
@@ -25,7 +24,7 @@ main(int argc, char *argv[])
     
     if (signal(SIGINT, sig_handler) == SIG_ERR) {
         fprintf(stderr, "Failed to bind SIGINT handler.\n");
-        sig_handler(-1);
+        return 1;
     }
     
     device_handler_init();
