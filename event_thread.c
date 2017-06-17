@@ -28,24 +28,23 @@ struct event {
     void *arg2;
 };
 
-static atomic_size_t g_thread_cnt;
+static atomic_int g_thread_cnt;
 static struct event_thread g_threads[MAX_EVENT_THREADS];
 
 static struct event_thread *
-get_event_thread(size_t thread_id)
+get_event_thread(int thread_id)
 {
-    struct event_thread *thread;
+    struct event_thread *thread = NULL;
 
-    if (thread_id > MAX_EVENT_THREADS) {
-        return NULL;
+    if ((unsigned) thread_id < MAX_EVENT_THREADS) {
+        thread = &g_threads[thread_id];
     }
 
-    thread = &g_threads[thread_id - 1];    
     return thread;
 }
 
 int
-event_thread_enqueue_event(size_t thread_id, void (*callback)(void *, void *), void *arg1, void *arg2)
+event_thread_enqueue_event(int thread_id, void (*callback)(void *, void *), void *arg1, void *arg2)
 {
     struct event_thread *thread = get_event_thread(thread_id);
     struct event *event;
@@ -123,14 +122,14 @@ out:
     return NULL;
 }
 
-size_t
+int
 event_thread_create(const char *name, void (*update_cb)(void *, void *), void *arg1, void *arg2)
 {
     struct event_thread *thread;
-    size_t thread_id;
+    int thread_id;
 
-    thread_id = atomic_fetch_add(&g_thread_cnt, 1) + 1;
-    thread = &g_threads[thread_id - 1];
+    thread_id = atomic_fetch_add(&g_thread_cnt, 1);
+    thread = &g_threads[thread_id];
     
     thread->running = true;
     thread->name = strdup(name);
@@ -160,7 +159,7 @@ events_err:
 name_err:
     free(thread->name);
 err:
-    return 0;
+    return -1;
 }
 
 static void
@@ -172,18 +171,18 @@ event_thread_stop_cb(void *arg1, void *arg2 __attribute__((unused)))
 }
 
 int
-event_thread_stop(size_t thread_id)
+event_thread_stop(int thread_id)
 {
     struct event_thread *thread;
 
     thread = get_event_thread(thread_id);
     if (!thread) {
-        fprintf(stderr, "Trying to stop inexistent event thread %zu.\n", thread_id);
+        fprintf(stderr, "Trying to stop inexistent event thread %d.\n", thread_id);
         return -1;
     }
     
     if (event_thread_enqueue_event(thread_id, event_thread_stop_cb, thread, NULL) != 0) {
-        fprintf(stderr, "Failed to stop thread %zu.\n", thread_id);
+        fprintf(stderr, "Failed to stop thread %d.\n", thread_id);
         return -1;
     }
 
@@ -201,7 +200,7 @@ void
 event_thread_lib_wait(void)
 {
     struct event_thread *thread;
-    size_t i;
+    int i;
 
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
@@ -215,12 +214,12 @@ void
 event_thread_lib_shutdown(void)
 {
     struct event_thread *thread;
-    size_t i;
+    int i;
     
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
         if (thread->running) {
-            event_thread_stop(i + 1);
+            event_thread_stop(i);
         }
     }
 
