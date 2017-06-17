@@ -69,7 +69,7 @@ out:
 }
 
 void 
-device_handler_init()
+device_handler_init(void)
 {
     struct sockaddr_in sin;
     

@@ -192,13 +192,13 @@ event_thread_stop(size_t thread_id)
 }
 
 void 
-event_thread_lib_init()
+event_thread_lib_init(void)
 {
     atomic_init(&g_thread_cnt, 0);
 }
 
 void
-event_thread_lib_wait()
+event_thread_lib_wait(void)
 {
     struct event_thread *thread;
     size_t i;
@@ -212,7 +212,7 @@ event_thread_lib_wait()
 }
 
 void
-event_thread_lib_shutdown()
+event_thread_lib_shutdown(void)
 {
     struct event_thread *thread;
     size_t i;
@@ -226,5 +226,3 @@ event_thread_lib_shutdown()
 
     event_thread_lib_wait();
 }
-
-void event_thread_lib_shutdown();
