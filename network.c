@@ -12,6 +12,7 @@
 #include "network.h"
 
 #define MAX_NETWORK_CONNECTIONS 32
+#define CONNECTION_TIMEOUT_SEC 3
 
 enum network_conn_state {
     NETWORK_CONN_STATE_UNITIALIZED = 0,
@@ -47,6 +48,7 @@ network_udp_init_conn(in_port_t port)
 {
     int conn_id;
     struct network_conn *conn;
+    struct timeval timeout;
 
     conn_id = atomic_fetch_add(&g_conn_count, 1);
     conn = &g_conns[conn_id];
@@ -56,6 +58,17 @@ network_udp_init_conn(in_port_t port)
     if (conn->fd == -1) {
         perror("socket");
         return -1;
+    }
+
+    timeout.tv_sec = CONNECTION_TIMEOUT_SEC;
+    timeout.tv_usec = 0;
+
+    if (setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
+        perror("setsockopt recv");
+    }
+
+    if (setsockopt(conn->fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
+        perror("setsockopt send");
     }
 
     conn->sin_me.sin_family = AF_INET;
