@@ -19,6 +19,8 @@
 #include "button_handler.h"
 
 #define BUTTON_HANDLER_PORT 54925
+#define DEVICE_HANDLER_PORT 49976
+#define SNMP_PORT 161
 
 static char g_local_ip[16];
 static uint8_t g_buf[1024];
@@ -153,13 +155,13 @@ device_handler_init(void)
         return;
     }
 
-    conn = network_udp_init_conn(htons(49976), false);
+    conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), false);
     if (conn != 0) {
         fprintf(stderr, "Could not setup connection.\n");
         return;
     }
     
-    if (network_udp_connect(conn, inet_addr("10.0.0.149"), htons(161)) != 0) {
+    if (network_udp_connect(conn, inet_addr("10.0.0.149"), htons(SNMP_PORT)) != 0) {
         network_udp_free(conn);
         fprintf(stderr, "Could not connect to scanner.\n");
         return;
