@@ -16,6 +16,7 @@
 #include "ber/snmp.h"
 #include "log.h"
 #include "network.h"
+#include "button_handler.h"
 
 #define BUTTON_HANDLER_PORT 54925
 
@@ -127,7 +128,7 @@ device_handler_loop(void *arg1, void *arg2)
     }
     
 out:
-    sleep(5);
+    sleep(300);
 }
 
 static void
@@ -165,6 +166,8 @@ device_handler_init(void)
     }
     
     tid = event_thread_create("device_handler");
+
+    button_handler_run(BUTTON_HANDLER_PORT);
     
     conn_p = malloc(sizeof(conn));
     *conn_p = conn;
