@@ -98,18 +98,18 @@ register_scanner_host(int conn)
     msg_len = (int) (g_buf_end - out + 1);
 
     hexdump("sending", out, msg_len);
-    msg_len = network_udp_send(conn, out, msg_len) != 0;
+    msg_len = network_udp_send(conn, out, msg_len);
     if (msg_len < 0) {
         perror("sendto");
         goto out;
     }
 
-    msg_len = network_udp_receive(conn, out, 1024);
+    msg_len = network_udp_receive(conn, g_buf, 1024);
     if (msg_len < 0) {
         perror("recvfrom");
         goto out;
     }
-    hexdump("received", out, msg_len);
+    hexdump("received", g_buf, msg_len);
 
     rc = 0;
 out:
