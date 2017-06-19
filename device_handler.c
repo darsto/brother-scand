@@ -17,6 +17,8 @@
 #include "log.h"
 #include "network.h"
 
+#define BUTTON_HANDLER_PORT 54925
+
 static char g_local_ip[16];
 static uint8_t g_buf[1024];
 static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
@@ -84,7 +86,7 @@ register_scanner_host(int conn)
     for (i = 0; i < 3; ++i) {
         snprintf(msg[i], sizeof(msg[i]),
                  "TYPE=BR;BUTTON=SCAN;USER=\"%s\";FUNC=%s;HOST=%s:%d;APPNUM=1;DURATION=360;CC=1;",
-                 host_name, scan_func[i], g_local_ip, 54925);
+                 host_name, scan_func[i], g_local_ip, BUTTON_HANDLER_PORT);
         
         varbind[i].oid = brRegisterKeyInfoOID;
         varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
