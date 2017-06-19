@@ -9,7 +9,7 @@
 #ifndef BROTHER_NETWORK_H
 #define BROTHER_NETWORK_H
 
-int network_udp_init_conn(in_port_t port);
+int network_udp_init_conn(in_port_t port, bool server);
 int network_udp_connect(int conn_id, in_addr_t addr, in_port_t port);
 int network_udp_send(int conn_id, const void *buf, size_t len);
 int network_udp_receive(int conn_id, void *buf, size_t len);

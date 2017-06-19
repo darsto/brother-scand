@@ -9,6 +9,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include "device_handler.h"
 #include "event_thread.h"
 #include "iputils.h"
@@ -149,7 +150,7 @@ device_handler_init(void)
         return;
     }
 
-    conn = network_udp_init_conn(htons(49976));
+    conn = network_udp_init_conn(htons(49976), false);
     if (conn != 0) {
         fprintf(stderr, "Could not setup connection.\n");
         return;
