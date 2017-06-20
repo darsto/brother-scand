@@ -16,4 +16,11 @@ int network_udp_receive(int conn_id, void *buf, size_t len);
 int network_udp_disconnect(int conn_id);
 int network_udp_free(int conn_id);
 
+int network_tcp_init_conn(in_port_t port, bool server);
+int network_tcp_connect(int conn_id, in_addr_t addr, in_port_t port);
+int network_tcp_send(int conn_id, const void *buf, size_t len);
+int network_tcp_receive(int conn_id, void *buf, size_t len);
+int network_tcp_disconnect(int conn_id);
+int network_tcp_free(int conn_id);
+
 #endif //BROTHER_NETWORK_H
