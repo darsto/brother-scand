@@ -55,12 +55,12 @@ get_scanner_status(int conn)
         goto out;
     }
     
-    msg_len = network_udp_receive(conn, out, 1024);
+    msg_len = network_udp_receive(conn, g_buf, 1024);
     if (msg_len < 0) {
         perror("recvfrom");
         goto out;
     }
-    hexdump("received", out, msg_len);
+    hexdump("received", g_buf, msg_len);
     
     rc = 0;
 out:
