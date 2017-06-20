@@ -9,69 +9,72 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include "button_handler.h"
+#include "data_channel.h"
 #include "event_thread.h"
 #include "log.h"
 #include "network.h"
-#include "data_channel.h"
-
-#define DATA_CHANNEL_PORT 49424
 
 static uint8_t g_buf[1024];
 static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
 
 static void
-button_handler_loop(void *arg1, void *arg2)
+data_channel_loop(void *arg1, void *arg2)
 {
     int *conn = arg1;
     int msg_len;
 
-    msg_len = network_udp_receive(*conn, g_buf, 1024);
+    printf("looping\n");
+    msg_len = network_tcp_receive(*conn, g_buf, 1024);
     if (msg_len < 0) {
-        perror("recvfrom");
+        //perror("recvfrom");
         goto out;
     }
     hexdump("received", g_buf, msg_len);
 
-    msg_len = network_udp_send(*conn, g_buf, msg_len);
+/*    msg_len = network_tcp_send(*conn, g_buf, msg_len);
     if (msg_len < 0) {
         perror("sendto");
         goto out;
     }
-    hexdump("sending", g_buf, msg_len);
+    hexdump("sending", g_buf, msg_len);*/
 
-    data_channel_create(DATA_CHANNEL_PORT);
 out:
     sleep(1);
 }
 
 static void
-button_handler_stop(void *arg1, void *arg2)
+data_channel_stop(void *arg1, void *arg2)
 {
     int *conn = arg1;
 
-    network_udp_disconnect(*conn);
-    network_udp_free(*conn);
-    
+    network_tcp_disconnect(*conn);
+    network_tcp_free(*conn);
+
     free(conn);
 }
 
 void
-button_handler_run(uint16_t port)
+data_channel_create(uint16_t port)
 {
     int tid, conn;
     int *conn_p;
 
-    conn = network_udp_init_conn(htons(port), true);
+    conn = network_tcp_init_conn(htons(port), false);
     if (conn < 0) {
         fprintf(stderr, "Could not setup connection.\n");
         return;
     }
 
-    tid = event_thread_create("button_handler");
+    if (network_tcp_connect(conn, inet_addr("10.0.0.149"), htons(54921)) != 0) {
+        network_tcp_free(conn);
+        fprintf(stderr, "Could not connect to scanner.\n");
+        return;
+    }
+    
+    tid = event_thread_create("data_channel");
 
     conn_p = malloc(sizeof(conn));
     *conn_p = conn;
-    event_thread_set_update_cb(tid, button_handler_loop, conn_p, NULL);
-    event_thread_set_stop_cb(tid, button_handler_stop, conn_p, NULL);
+    event_thread_set_update_cb(tid, data_channel_loop, conn_p, NULL);
+    event_thread_set_stop_cb(tid, data_channel_stop, conn_p, NULL);
 }

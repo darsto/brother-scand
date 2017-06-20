@@ -18,7 +18,8 @@ set(SOURCE_FILES
         event_thread.c event_thread.h
         iputils.c iputils.h 
         network.c network.h
-        button_handler.c button_handler.h)
+        button_handler.c button_handler.h
+        data_channel.c data_channel.h)
 
 set(SOURCE_FILES ${SOURCE_FILES} ber/ber.c ber/ber.h ber/snmp.c ber/snmp.h)
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
