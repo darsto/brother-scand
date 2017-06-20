@@ -137,9 +137,11 @@ network_udp_receive(int conn_id, void *buf, size_t len)
     assert((conn->server && conn->state != NETWORK_CONN_STATE_UNITIALIZED) ||
            (!conn->server && conn->state == NETWORK_CONN_STATE_CONNECTED));
 
+    slen = sizeof(sin_oth_tmp);
     recv_bytes = recvfrom(conn->fd, buf, len, 0, (struct sockaddr *) &sin_oth_tmp, &slen);
     if (recv_bytes < 0) {
         perror("recvfrom");
+        return -1;
     }
     
     if (conn->server && conn->state == NETWORK_CONN_STATE_DISCONNECTED) {
