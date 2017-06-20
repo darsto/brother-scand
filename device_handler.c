@@ -29,8 +29,8 @@ static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
 static int
 get_scanner_status(int conn)
 {
-    struct snmp_msg_header msg_header = {};
-    struct snmp_varbind varbind = {};
+    struct snmp_msg_header msg_header = {0};
+    struct snmp_varbind varbind = {0};
     int msg_len;
     uint8_t *out;
     int rc = -1;
@@ -70,8 +70,8 @@ out:
 static int
 register_scanner_host(int conn)
 {
-    struct snmp_msg_header msg_header = {};
-    struct snmp_varbind varbind[3] = {};
+    struct snmp_msg_header msg_header = {0};
+    struct snmp_varbind varbind[3] = {0};
     int msg_len;
     uint8_t *out;
     char msg[3][768];
