@@ -184,6 +184,7 @@ network_tcp_init_conn(in_port_t port, bool server)
     int conn_id;
     struct network_conn *conn;
     struct timeval timeout;
+    int one = 1;
 
     conn_id = atomic_fetch_add(&g_conn_count, 1);
     conn = &g_conns[conn_id];
@@ -208,6 +209,10 @@ network_tcp_init_conn(in_port_t port, bool server)
         perror("setsockopt send");
     }
 
+    if (setsockopt(conn->fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) != 0) {
+        perror("setsockopt");
+    }
+    
     conn->sin_me.sin_family = AF_INET;
     conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
     conn->sin_me.sin_port = port;
