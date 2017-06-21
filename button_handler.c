@@ -28,17 +28,14 @@ button_handler_loop(void *arg1, void *arg2)
 
     msg_len = network_udp_receive(*conn, g_buf, 1024);
     if (msg_len < 0) {
-        perror("recvfrom");
         goto out;
     }
-    hexdump("received", g_buf, msg_len);
 
     msg_len = network_udp_send(*conn, g_buf, msg_len);
     if (msg_len < 0) {
         perror("sendto");
         goto out;
     }
-    hexdump("sending", g_buf, msg_len);
 
     data_channel_create(DATA_CHANNEL_PORT);
 out:

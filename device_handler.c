@@ -48,7 +48,6 @@ get_scanner_status(int conn)
     out = snmp_encode_msg(g_buf_end, &msg_header, 1, &varbind);
     msg_len = (int) (g_buf_end - out + 1);
 
-    hexdump("sending", out, msg_len);
     msg_len = network_udp_send(conn, out, msg_len) != 0;
     if (msg_len < 0) {
         perror("sendto");
@@ -60,7 +59,6 @@ get_scanner_status(int conn)
         perror("recvfrom");
         goto out;
     }
-    hexdump("received", g_buf, msg_len);
     
     rc = 0;
 out:
@@ -99,7 +97,6 @@ register_scanner_host(int conn)
     out = snmp_encode_msg(g_buf_end, &msg_header, 3, varbind);
     msg_len = (int) (g_buf_end - out + 1);
 
-    hexdump("sending", out, msg_len);
     msg_len = network_udp_send(conn, out, msg_len);
     if (msg_len < 0) {
         perror("sendto");
@@ -111,7 +108,6 @@ register_scanner_host(int conn)
         perror("recvfrom");
         goto out;
     }
-    hexdump("received", g_buf, msg_len);
 
     rc = 0;
 out:

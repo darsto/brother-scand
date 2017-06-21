@@ -13,6 +13,7 @@
 #include <memory.h>
 #include <errno.h>
 #include "network.h"
+#include "log.h"
 
 #define MAX_NETWORK_CONNECTIONS 32
 #define CONNECTION_TIMEOUT_SEC 3
@@ -114,7 +115,8 @@ network_udp_send(int conn_id, const void *buf, size_t len)
 {
     struct network_conn *conn;
     ssize_t sent_bytes;
-    
+    char hexdump_line[64];
+
     conn = get_network_conn(conn_id);
     assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
     
@@ -122,6 +124,9 @@ network_udp_send(int conn_id, const void *buf, size_t len)
     if (sent_bytes < 0) {
         perror("sendto");
     }
+
+    snprintf(hexdump_line, sizeof(hexdump_line), "sent %zd/%zu bytes to %d", sent_bytes, len, ntohs(conn->sin_oth.sin_port));
+    hexdump(hexdump_line, buf, len);
     
     return (int) sent_bytes;
 }
@@ -133,6 +138,7 @@ network_udp_receive(int conn_id, void *buf, size_t len)
     ssize_t recv_bytes;
     struct sockaddr_in sin_oth_tmp;
     socklen_t slen;
+    char hexdump_line[64];
     int rc;
     
     conn = get_network_conn(conn_id);
@@ -148,6 +154,9 @@ network_udp_receive(int conn_id, void *buf, size_t len)
         }
         return -1;
     }
+
+    snprintf(hexdump_line, sizeof(hexdump_line), "received %zd bytes from %d", recv_bytes, ntohs(sin_oth_tmp.sin_port));
+    hexdump(hexdump_line, buf, recv_bytes);
     
     if (conn->server && conn->state == NETWORK_CONN_STATE_DISCONNECTED) {
         network_udp_connect(conn_id, sin_oth_tmp.sin_addr.s_addr, sin_oth_tmp.sin_port);
@@ -260,7 +269,8 @@ network_tcp_send(int conn_id, const void *buf, size_t len)
 {
     struct network_conn *conn;
     ssize_t sent_bytes;
-
+    char hexdump_line[64];
+    
     conn = get_network_conn(conn_id);
     assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
 
@@ -268,6 +278,9 @@ network_tcp_send(int conn_id, const void *buf, size_t len)
     if (sent_bytes < 0) {
         perror("sendto");
     }
+    
+    snprintf(hexdump_line, sizeof(hexdump_line), "sent %zd/%zu bytes to %d", sent_bytes, len, ntohs(conn->sin_oth.sin_port));
+    hexdump(hexdump_line, buf, len);
 
     return (int) sent_bytes;
 }
@@ -277,6 +290,7 @@ network_tcp_receive(int conn_id, void *buf, size_t len)
 {
     struct network_conn *conn;
     ssize_t recv_bytes;
+    char hexdump_line[64];
     int rc;
 
     conn = get_network_conn(conn_id);
@@ -287,6 +301,9 @@ network_tcp_receive(int conn_id, void *buf, size_t len)
     if (recv_bytes < 0 && rc != EAGAIN && rc != EWOULDBLOCK) {
         perror("recvfrom");
     }
+
+    snprintf(hexdump_line, sizeof(hexdump_line), "received %zd bytes from %d", recv_bytes, ntohs(conn->sin_oth.sin_port));
+    hexdump(hexdump_line, buf, recv_bytes);
 
     return (int) recv_bytes;
 }
