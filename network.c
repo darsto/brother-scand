@@ -11,6 +11,7 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <memory.h>
+#include <errno.h>
 #include "network.h"
 
 #define MAX_NETWORK_CONNECTIONS 32
@@ -132,7 +133,8 @@ network_udp_receive(int conn_id, void *buf, size_t len)
     ssize_t recv_bytes;
     struct sockaddr_in sin_oth_tmp;
     socklen_t slen;
-
+    int rc;
+    
     conn = get_network_conn(conn_id);
     assert((conn->server && conn->state != NETWORK_CONN_STATE_UNITIALIZED) ||
            (!conn->server && conn->state == NETWORK_CONN_STATE_CONNECTED));
@@ -140,7 +142,10 @@ network_udp_receive(int conn_id, void *buf, size_t len)
     slen = sizeof(sin_oth_tmp);
     recv_bytes = recvfrom(conn->fd, buf, len, 0, (struct sockaddr *) &sin_oth_tmp, &slen);
     if (recv_bytes < 0) {
-        perror("recvfrom");
+        rc = errno;
+        if (rc != EAGAIN && rc != EWOULDBLOCK) {
+            perror("recvfrom");
+        }
         return -1;
     }
     
@@ -272,12 +277,14 @@ network_tcp_receive(int conn_id, void *buf, size_t len)
 {
     struct network_conn *conn;
     ssize_t recv_bytes;
+    int rc;
 
     conn = get_network_conn(conn_id);
     assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
 
     recv_bytes = recv(conn->fd, buf, len, 0);
-    if (recv_bytes < 0) {
+    rc = errno;
+    if (recv_bytes < 0 && rc != EAGAIN && rc != EWOULDBLOCK) {
         perror("recvfrom");
     }
 
