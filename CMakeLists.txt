@@ -7,7 +7,7 @@ set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra \
     -Wno-unused-variable -Wno-unused-parameter -Wformat=2 -Wswitch-default \
     -Wno-unused-label -Wcast-align -Wpointer-arith -Wbad-function-cast \
     -Wstrict-overflow=5 -Wstrict-prototypes -Winline -Wundef -Wnested-externs \
-    -Wcast-qual -Wshadow -Wunreachable-code -Wlogical-op -Wfloat-equal \
+    -Wcast-qual -Wshadow -Wunreachable-code -Wfloat-equal \
     -Wstrict-aliasing=2 -Wredundant-decls -Wold-style-definition")
 
 set(SOURCE_FILES
