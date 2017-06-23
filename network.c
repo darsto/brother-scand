@@ -298,8 +298,11 @@ network_tcp_receive(int conn_id, void *buf, size_t len)
 
     recv_bytes = recv(conn->fd, buf, len, 0);
     rc = errno;
-    if (recv_bytes < 0 && rc != EAGAIN && rc != EWOULDBLOCK) {
-        perror("recvfrom");
+    if (recv_bytes < 0) {
+        if (rc != EAGAIN && rc != EWOULDBLOCK) {
+            perror("recvfrom");
+        }
+        return -1;
     }
 
     snprintf(hexdump_line, sizeof(hexdump_line), "received %zd bytes from %d", recv_bytes, ntohs(conn->sin_oth.sin_port));
