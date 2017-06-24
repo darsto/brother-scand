@@ -14,61 +14,110 @@
 #include "log.h"
 #include "network.h"
 
-static uint8_t g_buf[1024];
-static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
+static uint8_t g_buf[2048];
 
-int status = 0;
+struct data_channel {
+    int conn;
+    FILE *file;
+    void (*process_cb)(struct data_channel *data_channel, void *arg);
+};
+
+static void
+exchange_params(struct data_channel *data_channel, void *arg)
+{
+    int msg_len = 0, retries = 0;
+
+    while (msg_len <= 0 && retries < 10) {
+        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        usleep(1000 * 25);
+        ++retries;
+    }
+
+    if (retries == 10) {
+        fprintf(stderr, "Couldn't receive scan params on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    //TODO
+    abort();
+
+    data_channel->file = fopen("/tmp/scan.jpg", "ab");
+    
+err:
+    fprintf(stderr, "Failed exchange scan params on data_channel %d\n", data_channel->conn);
+    abort();
+}
+
+static void 
+init_connection(struct data_channel *data_channel, void *arg)
+{
+    int msg_len = 0, retries = 0;
+    
+    while (msg_len <= 0 && retries < 10) {
+        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        usleep(1000 * 25);
+        ++retries;
+    }
+
+    if (retries == 10) {
+        fprintf(stderr, "Couldn't receive welcome message on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+    
+    if (g_buf[0] != '+') {
+        fprintf(stderr, "Received invalid welcome message on data_channel %d\n", data_channel->conn);
+        hexdump("received message", g_buf, msg_len);
+        goto err;
+    }
+
+    msg_len = 0, retries = 0;
+    while (msg_len <= 0 && retries < 10) {
+        msg_len = network_tcp_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
+        usleep(1000 * 25);
+        ++retries;
+    }
+
+    if (retries == 10) {
+        fprintf(stderr, "Couldn't send welcome message on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    data_channel->process_cb = exchange_params;
+    return;
+    
+err:
+    fprintf(stderr, "Failed to init data_channel %d\n", data_channel->conn);
+    abort();
+}
 
 static void
 data_channel_loop(void *arg1, void *arg2)
 {
-    int *conn = arg1;
-    int msg_len;
-
-    msg_len = network_tcp_receive(*conn, g_buf, 1024);
-    if (msg_len < 0) {
-        goto out;
-    }
-
-    if (status == 0) {
-        uint8_t a[] = { 0x1b, 0x4b, 0x0a, 0x80 };
-        msg_len = network_tcp_send(*conn, a, sizeof(a));
-    } else if (status == 1) {
-        uint8_t b[] = { 0x1b, 0x49, 0x0a, 0x52, 0x3d, 0x33, 0x30, 0x30, 0x2c, 0x33, 0x30, 0x30, 0x0a, 0x4d, 0x3d, 0x43, 0x47, 0x52, 0x41, 0x59, 0x0a, 0x44, 0x3d, 0x53, 0x49, 0x4e, 0x0a, 0x80 };
-        msg_len = network_tcp_send(*conn, b, sizeof(b));
-    } else if (status == 2) {
-        uint8_t c[] = { 0x1b, 0x58, 0x0a, 0x52, 0x3d, 0x33, 0x30, 0x30, 0x2c, 0x33, 0x30, 0x30, 0x0a, 0x4d, 0x3d, 0x43, 0x47, 0x52, 0x41, 0x59, 0x0a, 0x43, 0x3d, 0x4a, 0x50, 0x45, 0x47, 0x0a, 0x4a, 0x3d, 0x4d, 0x49, 0x4e, 0x0a, 0x42, 0x3d, 0x35, 0x30, 0x0a, 0x4e, 0x3d, 0x35, 0x30, 0x0a, 0x41, 0x3d, 0x30, 0x2c, 0x30, 0x2c, 0x32, 0x34, 0x36, 0x34, 0x2c, 0x33, 0x34, 0x38, 0x34, 0x0a, 0x44, 0x3d, 0x53, 0x49, 0x4e, 0x0a, 0x47, 0x3d, 0x31, 0x0a, 0x4c, 0x3d, 0x31, 0x32, 0x38, 0x0a, 0x80};
-        msg_len = network_tcp_send(*conn, c, sizeof(c));
-    } else {
-        goto out;
-    }
+    struct data_channel *data_channel = arg1;
     
-    if (msg_len < 0) {
-        perror("sendto");
-        goto out;
-    }
-    
-    ++status;
-out:
-    usleep(500 * 1000);
+    data_channel->process_cb(data_channel, arg2);
 }
 
 static void
 data_channel_stop(void *arg1, void *arg2)
 {
-    int *conn = arg1;
+    struct data_channel *data_channel = arg1;
 
-    network_tcp_disconnect(*conn);
-    network_tcp_free(*conn);
+    if (data_channel->file) {
+        fclose(data_channel->file);
+    }
 
-    free(conn);
+    network_tcp_disconnect(data_channel->conn);
+    network_tcp_free(data_channel->conn);
+
+    free(data_channel);
 }
 
 void
 data_channel_create(uint16_t port)
 {
     int tid, conn;
-    int *conn_p;
+    struct data_channel *data_channel;
 
     conn = network_tcp_init_conn(htons(port), false);
     if (conn < 0) {
@@ -84,8 +133,10 @@ data_channel_create(uint16_t port)
     
     tid = event_thread_create("data_channel");
 
-    conn_p = malloc(sizeof(conn));
-    *conn_p = conn;
-    event_thread_set_update_cb(tid, data_channel_loop, conn_p, NULL);
-    event_thread_set_stop_cb(tid, data_channel_stop, conn_p, NULL);
+    data_channel = calloc(1, sizeof(*data_channel));
+    data_channel->conn = conn;
+    data_channel->process_cb = init_connection;
+    
+    event_thread_set_update_cb(tid, data_channel_loop, data_channel, NULL);
+    event_thread_set_stop_cb(tid, data_channel_stop, data_channel, NULL);
 }
