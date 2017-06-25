@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <memory.h>
+#include <zconf.h>
 #include "data_channel.h"
 #include "event_thread.h"
 #include "log.h"
@@ -56,7 +57,7 @@ get_data_channel_param_by_id(struct data_channel *data_channel, uint8_t id)
 }
 
 static int
-read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_t *buf_end)
+read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_t *buf_end, const char *whitelist)
 {
     struct data_channel_param *param;
     uint8_t id;
@@ -72,11 +73,16 @@ read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_
 
         i = 0;
         while (*buf != 0x0a) {
-            param->value[i++] = *buf++;
+            if (whitelist == NULL || strchr(whitelist, id) != NULL) {
+                param->value[i++] = *buf;
+            }
+            
             if (i >= sizeof(param->value) - 1) {
                 fprintf(stderr, "Received data_channel param longer than %zu bytes!\n", sizeof(param->value) - 1);
                 return -1;
             }
+            
+            ++buf;
         }
         param->value[i] = 0;
 
@@ -87,7 +93,7 @@ read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_
 }
 
 static uint8_t *
-write_data_channel_params(struct data_channel *data_channel, uint8_t *buf)
+write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const char *whitelist)
 {
     struct data_channel_param *param;
     size_t len, i = 0;
@@ -98,6 +104,10 @@ write_data_channel_params(struct data_channel *data_channel, uint8_t *buf)
             continue;
         }
 
+        if (whitelist != NULL && strchr(whitelist, param->id) == NULL) {
+            continue;
+        }
+        
         *buf++ = (uint8_t) param->id;
         *buf++ = '=';
         memcpy(buf, param->value, len);
@@ -107,10 +117,143 @@ write_data_channel_params(struct data_channel *data_channel, uint8_t *buf)
     
     return buf;
 }
+
+static void
+receive_data(struct data_channel *data_channel, void *arg)
+{
+    int msg_len = 0, retries = 0;
+    uint8_t *buf;
+    
+    while (msg_len <= 0 && retries < 10) {
+        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        usleep(1000 * 25);
+        ++retries;
+    }
+
+    if (retries == 10) {
+        fprintf(stderr, "Couldn't receive first data packet on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    buf = g_buf;
+    
+    /* Even that scanner sends data in realtime, it does so in bulks.
+     * The following sequence is a metadata at the beginning of a "bulk" 
+     * TODO (not decoded yet, for now JPEG 0xff 0xd9 is checked to detect the end of data) */
+    if (*buf == 0x64 && *(buf + 1) == 0x07) {
+        buf += 12;
+        msg_len -= 12;
+    }
+
+    fwrite(buf, sizeof(*buf), (size_t) msg_len, data_channel->file);
+
+    if (buf[msg_len - 2] == 0xff && buf[msg_len - 1] == 0xd9) {
+        /* JPEG ending sequence */
+        printf("Successfully received an image on data_channel %d\n", data_channel->conn);
+        fclose(data_channel->file);
+        abort(); // TODO exit gracefully
+    }
+    
+    return;
+err:
+    abort();
+}
+
 static void
 exchange_params2(struct data_channel *data_channel, void *arg)
-{    
-    // TODO yet unimplemented
+{
+    struct data_channel_param *param;
+    uint8_t *buf, *buf_end;
+    long recv_params[7];
+    int msg_len = 0, retries = 0;
+    size_t i, len;
+    long tmp;
+
+    while (msg_len <= 0 && retries < 10) {
+        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        usleep(1000 * 25);
+        ++retries;
+    }
+
+    if (retries == 10) {
+        fprintf(stderr, "Couldn't receive scan params on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    /* process received data */
+    assert(g_buf[0] == 0x00); // ??
+    assert(g_buf[1] == 0x1d); // ??
+    assert(g_buf[2] == 0x00); // ??
+    assert(g_buf[msg_len - 1] == 0x00);
+    
+    i = 0;
+    buf_end = buf = g_buf + 3;
+
+    /* process dpi x and y */
+    while(i < 2 && *buf_end != 0x00) {
+        recv_params[i++] = strtol((char *) buf, (char **) &buf_end, 10);
+        buf = ++buf_end;
+    }
+    
+    len = buf_end - g_buf - 4;
+    assert(len < 15);
+    param = get_data_channel_param_by_id(data_channel, 'R');
+    assert(param);
+
+    /* previously sent and just received dpi should match */
+    if (strncmp((char *) (g_buf + 3), param->value, len) != 0) {
+        printf("Scanner does not support given dpi: %s. %.*s will be used instead\n",
+               param->value, (int) len, (char *) (g_buf + 3));
+        
+        memcpy(param->value, g_buf + 3, len);
+        param->value[len] = 0;
+    }
+    
+    while(i < sizeof(recv_params) / sizeof(recv_params[0]) && *buf_end != 0x00) {
+        tmp = strtol((char *) buf, (char **) &buf_end, 10);
+        assert(tmp > 0 && tmp < USHRT_MAX);
+        recv_params[i++] = tmp;
+        buf = ++buf_end;
+    }
+    
+    assert(*buf == 0x00);
+    
+    param = get_data_channel_param_by_id(data_channel, 'A');
+    assert(param);
+    sprintf(param->value, "0,0,%ld,%ld", recv_params[4], recv_params[6]);
+
+    /* prepare a response */
+    buf = g_buf;
+    *buf++ = 0x1b; // magic sequence
+    *buf++ = 0x58; // packet id (?)
+    *buf++ = 0x0a; // header end
+    
+    buf = write_data_channel_params(data_channel, buf, "RMCJBNADGL");
+    if (buf == NULL) {
+        fprintf(stderr, "Failed to write scan params on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    *buf++ = 0x80; // end of message
+
+    msg_len = 0, retries = 0;
+    while (msg_len <= 0 && retries < 10) {
+        msg_len = network_tcp_send(data_channel->conn, g_buf, buf - g_buf);
+        usleep(1000 * 25);
+        ++retries;
+    }
+
+    if (retries == 10) {
+        fprintf(stderr, "Couldn't send scan params on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    data_channel->file = fopen("/tmp/scan.jpg", "wb");
+    data_channel->process_cb = receive_data;
+    return;
+    
+err:
+    fprintf(stderr, "Failed to exchange scan params on data_channel %d\n", data_channel->conn);
     abort();
 }
 
@@ -132,16 +275,6 @@ exchange_params1(struct data_channel *data_channel, void *arg)
         fprintf(stderr, "Couldn't receive initial scan params on data_channel %d\n", data_channel->conn);
         goto err;
     }
-
-    /* prepare default data for response */
-    param = get_data_channel_param_by_id(data_channel, 'R');
-    strcpy(param->value, "300,300");
-
-    param = get_data_channel_param_by_id(data_channel, 'M');
-    strcpy(param->value, "CGRAY");
-
-    param = get_data_channel_param_by_id(data_channel, 'D');
-    strcpy(param->value, "SIN");
     
     /* process received data */
     assert(g_buf[0] == 0x30); // ??
@@ -154,7 +287,7 @@ exchange_params1(struct data_channel *data_channel, void *arg)
     buf = g_buf + 3;
     buf_end = g_buf + msg_len - 2;
     
-    if (read_data_channel_params(data_channel, buf, buf_end) != 0) {
+    if (read_data_channel_params(data_channel, buf, buf_end, NULL) != 0) {
         fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
         goto err;
     }
@@ -165,7 +298,7 @@ exchange_params1(struct data_channel *data_channel, void *arg)
     *buf++ = 0x49; // packet id (?)
     *buf++ = 0x0a; // header end
     
-    buf = write_data_channel_params(data_channel, buf);
+    buf = write_data_channel_params(data_channel, buf, "RMD");
     if (buf == NULL) {
         fprintf(stderr, "Failed to write initial scan params on data_channel %d\n", data_channel->conn);
         goto err;
@@ -258,6 +391,37 @@ data_channel_stop(void *arg1, void *arg2)
     free(data_channel);
 }
 
+static void
+init_data_channel(struct data_channel *data_channel, int conn)
+{
+    struct data_channel_param *param;
+    int i = 0;
+
+    data_channel->conn = conn;
+    data_channel->process_cb = init_connection;
+
+#define DATA_CH_PARAM(ID, VAL) \
+    param = &data_channel->params[i++]; \
+    param->id = ID; \
+    strcpy(param->value, VAL); 
+    
+    DATA_CH_PARAM('F', "");
+    DATA_CH_PARAM('D', "SIN");
+    DATA_CH_PARAM('E', "");
+    DATA_CH_PARAM('R', "300,300");
+    DATA_CH_PARAM('M', "CGRAY");
+    DATA_CH_PARAM('E', "");
+    DATA_CH_PARAM('C', "JPEG");
+    DATA_CH_PARAM('J', "");
+    DATA_CH_PARAM('B', "50");
+    DATA_CH_PARAM('N', "50");
+    DATA_CH_PARAM('A', "");
+    DATA_CH_PARAM('G', "1");
+    DATA_CH_PARAM('L', "128");
+    
+#undef DATA_CH_PARAM
+}
+
 void
 data_channel_create(uint16_t port)
 {
@@ -279,13 +443,7 @@ data_channel_create(uint16_t port)
     tid = event_thread_create("data_channel");
 
     data_channel = calloc(1, sizeof(*data_channel));
-    data_channel->conn = conn;
-    data_channel->params[0].id = 'F';
-    data_channel->params[1].id = 'D';
-    data_channel->params[2].id = 'E';
-    data_channel->params[3].id = 'R';
-    data_channel->params[4].id = 'M';
-    data_channel->process_cb = init_connection;
+    init_data_channel(data_channel, conn);
     
     event_thread_set_update_cb(tid, data_channel_loop, data_channel, NULL);
     event_thread_set_stop_cb(tid, data_channel_stop, data_channel, NULL);
