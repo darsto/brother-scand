@@ -55,6 +55,58 @@ get_data_channel_param_by_id(struct data_channel *data_channel, uint8_t id)
     return ret;
 }
 
+static int
+read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_t *buf_end)
+{
+    struct data_channel_param *param;
+    uint8_t id;
+    size_t i;
+    
+    while (buf < buf_end) {
+        id = *buf++;
+        assert(*buf == '=');
+        ++buf;
+
+        param = get_data_channel_param_by_id(data_channel, id);
+        assert(param != NULL);
+
+        i = 0;
+        while (*buf != 0x0a) {
+            param->value[i++] = *buf++;
+            if (i >= sizeof(param->value) - 1) {
+                fprintf(stderr, "Received data_channel param longer than %zu bytes!\n", sizeof(param->value) - 1);
+                return -1;
+            }
+        }
+        param->value[i] = 0;
+
+        ++buf;
+    }
+    
+    return 0;
+}
+
+static uint8_t *
+write_data_channel_params(struct data_channel *data_channel, uint8_t *buf)
+{
+    struct data_channel_param *param;
+    size_t len, i = 0;
+    
+    while ((param = get_data_channel_param_by_index(data_channel, i++)) != NULL) {
+        len = strlen(param->value);
+        if (len == 0) {
+            continue;
+        }
+
+        *buf++ = (uint8_t) param->id;
+        *buf++ = '=';
+        memcpy(buf, param->value, len);
+        buf += len;
+        *buf++ = 0x0a;
+    }
+    
+    return buf;
+}
 static void
 exchange_params2(struct data_channel *data_channel, void *arg)
 {    
@@ -66,11 +118,9 @@ exchange_params2(struct data_channel *data_channel, void *arg)
 static void
 exchange_params1(struct data_channel *data_channel, void *arg)
 {
-    int msg_len = 0, retries = 0;
-    size_t len, i;
-    uint8_t *buf, *buf_end;
-    uint8_t option;
     struct data_channel_param *param;
+    uint8_t *buf, *buf_end;
+    int msg_len = 0, retries = 0;
 
     while (msg_len <= 0 && retries < 10) {
         msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
@@ -104,25 +154,9 @@ exchange_params1(struct data_channel *data_channel, void *arg)
     buf = g_buf + 3;
     buf_end = g_buf + msg_len - 2;
     
-    while (buf < buf_end) {
-        option = *buf++;
-        assert(*buf == '=');
-        ++buf;
-        
-        param = get_data_channel_param_by_id(data_channel, option);
-        assert(param != NULL);
-        
-        i = 0;
-        while (*buf != 0x0a) {
-            param->value[i++] = *buf++;
-            if (i >= sizeof(param->value) - 1) {
-                fprintf(stderr, "Received value longer than %zu bytes!\n", sizeof(param->value) - 1);
-                goto err;
-            }
-        }
-        param->value[i] = 0;
-        
-        ++buf;
+    if (read_data_channel_params(data_channel, buf, buf_end) != 0) {
+        fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
+        goto err;
     }
     
     /* prepare a response */
@@ -131,18 +165,10 @@ exchange_params1(struct data_channel *data_channel, void *arg)
     *buf++ = 0x49; // packet id (?)
     *buf++ = 0x0a; // header end
     
-    i = 0;
-    while ((param = get_data_channel_param_by_index(data_channel, i++)) != NULL) {
-        len = strlen(param->value);
-        if (len == 0) {
-            continue;
-        }
-        
-        *buf++ = (uint8_t) param->id;
-        *buf++ = '=';
-        memcpy(buf, param->value, len);
-        buf += len;
-        *buf++ = 0x0a;
+    buf = write_data_channel_params(data_channel, buf);
+    if (buf == NULL) {
+        fprintf(stderr, "Failed to write initial scan params on data_channel %d\n", data_channel->conn);
+        goto err;
     }
     
     *buf++ = 0x80; // end of message
