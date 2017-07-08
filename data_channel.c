@@ -18,6 +18,9 @@
 #include "network.h"
 
 #define DATA_CHANNEL_MAX_PARAMS 16
+#define DATA_CHANNEL_CHUNK_SIZE 0x10000
+#define DATA_CHANNEL_CHUNK_HEADER_SIZE 0xC
+#define DATA_CHANNEL_CHUNK_MAX_PROGRESS 0x1000
 
 static uint8_t g_buf[2048];
 
@@ -29,6 +32,9 @@ struct data_channel_param {
 struct data_channel {
     int conn;
     FILE *file;
+    int remaining_chunk_bytes;
+    bool last_chunk;
+
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
     void (*process_cb)(struct data_channel *data_channel, void *arg);
 };
@@ -118,12 +124,40 @@ write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const
     return buf;
 }
 
+static int
+parse_chunk_header(struct data_channel *data_channel)
+{
+    int progress;
+    int total_chunk_size;
+
+    // bytes 0-5 are unknown, but seem constant (64 07 00 01 00 84)
+    // 6-7 is overall progress (little endian)
+    // 8-9 seem constant (00 00)
+    // 10-11 is upcoming chunk size in bytes (little endian)
+
+    progress = (g_buf[6] | (g_buf[7] << 8)) * 100 / DATA_CHANNEL_CHUNK_MAX_PROGRESS;
+    printf("data_channel %d: Receiving data: %d%%\n", data_channel->conn, progress);
+
+    data_channel->remaining_chunk_bytes = (g_buf[10] | (g_buf[11] << 8));
+    total_chunk_size = data_channel->remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
+    
+    if (total_chunk_size > DATA_CHANNEL_CHUNK_SIZE) {
+        fprintf(stderr, "Invalid chunk size on data_channel %d\n", data_channel->conn);
+        return -1;
+    }
+    
+    data_channel->last_chunk = (total_chunk_size < DATA_CHANNEL_CHUNK_SIZE);
+    
+    return 0;
+}
+
 static void
 receive_data(struct data_channel *data_channel, void *arg)
 {
     int msg_len = 0, retries = 0;
     uint8_t *buf;
-    
+    int rc;
+
     while (msg_len <= 0 && retries < 10) {
         msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
         usleep(1000 * 25);
@@ -131,29 +165,37 @@ receive_data(struct data_channel *data_channel, void *arg)
     }
 
     if (retries == 10) {
-        fprintf(stderr, "Couldn't receive first data packet on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't receive data packet on data_channel %d\n", data_channel->conn);
         goto err;
     }
 
     buf = g_buf;
-    
-    /* Even that scanner sends data in realtime, it does so in bulks.
-     * The following sequence is a metadata at the beginning of a "bulk" 
-     * TODO (not decoded yet, for now JPEG 0xff 0xd9 is checked to detect the end of data) */
-    if (*buf == 0x64 && *(buf + 1) == 0x07) {
-        buf += 12;
-        msg_len -= 12;
+
+    if (data_channel->remaining_chunk_bytes == 0) {
+        rc = parse_chunk_header(data_channel);
+        if (rc != 0) {
+            fprintf(stderr, "Couldn't parse header on data_channel %d\n", data_channel->conn);
+            goto err;
+        }
+
+        buf += DATA_CHANNEL_CHUNK_HEADER_SIZE;
+        msg_len -= DATA_CHANNEL_CHUNK_HEADER_SIZE;
     }
 
     fwrite(buf, sizeof(*buf), (size_t) msg_len, data_channel->file);
+    data_channel->remaining_chunk_bytes -= msg_len;
 
-    if (buf[msg_len - 2] == 0xff && buf[msg_len - 1] == 0xd9) {
-        /* JPEG ending sequence */
-        printf("Successfully received an image on data_channel %d\n", data_channel->conn);
-        fclose(data_channel->file);
-        abort(); // TODO exit gracefully
+    if (data_channel->remaining_chunk_bytes < 0) {
+        fprintf(stderr, "Received too much (invalid) data on data_channel %d\n", data_channel->conn);
+        goto err;
     }
     
+    if (data_channel->remaining_chunk_bytes == 0 && data_channel->last_chunk) {
+        printf("Successfully received an image on data_channel %d\n", data_channel->conn);
+        fclose(data_channel->file);
+        exit(0); // TODO exit gracefully
+    }
+
     return;
 err:
     abort();
