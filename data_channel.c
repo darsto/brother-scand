@@ -31,13 +31,17 @@ struct data_channel_param {
 
 struct data_channel {
     int conn;
-    FILE *file;
+    FILE *tempfile;
     int remaining_chunk_bytes;
     bool last_chunk;
+    int scanned_pages;
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
     void (*process_cb)(struct data_channel *data_channel, void *arg);
 };
+
+static int process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len);
+static void receive_data(struct data_channel *data_channel, void *arg);
 
 static struct data_channel_param *
 get_data_channel_param_by_index(struct data_channel *data_channel, uint8_t index)
@@ -124,6 +128,78 @@ write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const
     return buf;
 }
 
+static void
+receive_feeder_response(struct data_channel *data_channel, void *arg)
+{
+    int msg_len = 0, retries = 0, rc;
+
+    /* 15 seconds timeout */
+    while (msg_len <= 0 && retries < 300) {
+        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        usleep(1000 * 50);
+        ++retries;
+    }
+
+    if (retries == 300 || (msg_len == 1 && g_buf[0] == 0x80)) {
+        /* no more documents to scan */
+        exit(0); // TODO exit gracefully
+    }
+
+    data_channel->last_chunk = false;
+    data_channel->remaining_chunk_bytes = 0;
+    data_channel->tempfile = tmpfile();
+    if (data_channel->tempfile == NULL) {
+        fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    rc = process_data(data_channel, g_buf, msg_len);
+    if (rc != 0) {
+        fprintf(stderr, "Couldn't process new-page data packet on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+    
+    data_channel->process_cb = receive_data;
+    return;
+    
+err:
+    abort();
+}
+
+static void
+receive_data_footer(struct data_channel *data_channel, void *arg)
+{
+    int msg_len = 0, retries = 0;
+    uint8_t msg[10];
+
+    while (msg_len <= 0 && retries < 10) {
+        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        usleep(1000 * 25);
+        ++retries;
+    }
+
+    if (retries == 10) {
+        fprintf(stderr, "Couldn't receive data packet on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    if (msg_len != 10) {
+        fprintf(stderr, "Received invalid data footer on data_channel %d. length = %d instead of %zu\n", data_channel->conn, msg_len, sizeof(msg));
+        goto err;
+    }
+
+    memcpy(msg, g_buf, sizeof(msg));
+    // 10 bytes of data, usually:
+    // 8207 0001 0084 0000 0000
+    // still unknown
+
+    data_channel->process_cb = receive_feeder_response;
+    return;
+    
+err:
+    abort();
+}
+
 static int
 parse_chunk_header(struct data_channel *data_channel)
 {
@@ -151,6 +227,59 @@ parse_chunk_header(struct data_channel *data_channel)
     return 0;
 }
 
+static int
+process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
+{
+    int rc;
+    size_t size;
+    char filename[64];
+    FILE* destfile;
+
+    if (data_channel->remaining_chunk_bytes == 0) {
+        rc = parse_chunk_header(data_channel);
+        if (rc != 0) {
+            fprintf(stderr, "Couldn't parse header on data_channel %d\n", data_channel->conn);
+            return -1;
+        }
+
+        buf += DATA_CHANNEL_CHUNK_HEADER_SIZE;
+        msg_len -= DATA_CHANNEL_CHUNK_HEADER_SIZE;
+    }
+
+    fwrite(buf, sizeof(*buf), (size_t) msg_len, data_channel->tempfile);
+    data_channel->remaining_chunk_bytes -= msg_len;
+
+    if (data_channel->remaining_chunk_bytes < 0) {
+        fprintf(stderr, "Received too much (invalid) data on data_channel %d\n", data_channel->conn);
+        return -1;
+    }
+
+    if (data_channel->remaining_chunk_bytes == 0 && data_channel->last_chunk) {
+        printf("Successfully received image data on data_channel %d\n", data_channel->conn);
+
+        assert(data_channel->scanned_pages < INT_MAX);
+        sprintf(filename, "scan%d.jpg", data_channel->scanned_pages++);
+        destfile = fopen(filename, "w");
+        if (destfile == NULL) {
+            fprintf(stderr, "Cannot create file '%s' on data_channel %d\n", filename, data_channel->conn);
+            return -1;
+        }
+
+        fseek(data_channel->tempfile, 0, SEEK_SET);
+        while ((size = fread(g_buf, 1, sizeof(g_buf), data_channel->tempfile))) {
+            fwrite(g_buf, 1, size, destfile);
+        }
+
+        fclose(destfile);
+        fclose(data_channel->tempfile);
+        data_channel->tempfile = NULL;
+        
+        data_channel->process_cb = receive_data_footer;
+    }
+    
+    return 0;
+}
+
 static void
 receive_data(struct data_channel *data_channel, void *arg)
 {
@@ -169,31 +298,10 @@ receive_data(struct data_channel *data_channel, void *arg)
         goto err;
     }
 
-    buf = g_buf;
-
-    if (data_channel->remaining_chunk_bytes == 0) {
-        rc = parse_chunk_header(data_channel);
-        if (rc != 0) {
-            fprintf(stderr, "Couldn't parse header on data_channel %d\n", data_channel->conn);
-            goto err;
-        }
-
-        buf += DATA_CHANNEL_CHUNK_HEADER_SIZE;
-        msg_len -= DATA_CHANNEL_CHUNK_HEADER_SIZE;
-    }
-
-    fwrite(buf, sizeof(*buf), (size_t) msg_len, data_channel->file);
-    data_channel->remaining_chunk_bytes -= msg_len;
-
-    if (data_channel->remaining_chunk_bytes < 0) {
-        fprintf(stderr, "Received too much (invalid) data on data_channel %d\n", data_channel->conn);
+    rc = process_data(data_channel, g_buf, msg_len);
+    if (rc != 0) {
+        fprintf(stderr, "Couldn't process data packet on data_channel %d\n", data_channel->conn);
         goto err;
-    }
-    
-    if (data_channel->remaining_chunk_bytes == 0 && data_channel->last_chunk) {
-        printf("Successfully received an image on data_channel %d\n", data_channel->conn);
-        fclose(data_channel->file);
-        exit(0); // TODO exit gracefully
     }
 
     return;
@@ -290,7 +398,12 @@ exchange_params2(struct data_channel *data_channel, void *arg)
         goto err;
     }
 
-    data_channel->file = fopen("/tmp/scan.jpg", "wb");
+    data_channel->tempfile = tmpfile();
+    if (data_channel->tempfile == NULL) {
+        fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+    
     data_channel->process_cb = receive_data;
     return;
     
@@ -423,8 +536,8 @@ data_channel_stop(void *arg1, void *arg2)
 {
     struct data_channel *data_channel = arg1;
 
-    if (data_channel->file) {
-        fclose(data_channel->file);
+    if (data_channel->tempfile) {
+        fclose(data_channel->tempfile);
     }
 
     network_tcp_disconnect(data_channel->conn);
