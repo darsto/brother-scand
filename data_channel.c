@@ -31,17 +31,18 @@ struct data_channel_param {
 
 struct data_channel {
     int conn;
+    void (*process_cb)(struct data_channel *data_channel, void *arg);
+
     FILE *tempfile;
+
     int remaining_chunk_bytes;
     bool last_chunk;
     int scanned_pages;
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
-    void (*process_cb)(struct data_channel *data_channel, void *arg);
 };
 
-static int process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len);
-static void receive_data(struct data_channel *data_channel, void *arg);
+static void receive_initial_data(struct data_channel *data_channel, void *arg);
 
 static struct data_channel_param *
 get_data_channel_param_by_index(struct data_channel *data_channel, uint8_t index)
@@ -58,11 +59,11 @@ get_data_channel_param_by_id(struct data_channel *data_channel, uint8_t id)
 {
     struct data_channel_param *ret;
     uint8_t i = 0;
-    
+
     do {
         ret = get_data_channel_param_by_index(data_channel, i++);
     } while (ret != NULL && ret->id != id);
-    
+
     return ret;
 }
 
@@ -72,7 +73,7 @@ read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_
     struct data_channel_param *param;
     uint8_t id;
     size_t i;
-    
+
     while (buf < buf_end) {
         id = *buf++;
         assert(*buf == '=');
@@ -86,19 +87,19 @@ read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_
             if (whitelist == NULL || strchr(whitelist, id) != NULL) {
                 param->value[i++] = *buf;
             }
-            
+
             if (i >= sizeof(param->value) - 1) {
                 fprintf(stderr, "Received data_channel param longer than %zu bytes!\n", sizeof(param->value) - 1);
                 return -1;
             }
-            
+
             ++buf;
         }
         param->value[i] = 0;
 
         ++buf;
     }
-    
+
     return 0;
 }
 
@@ -106,8 +107,9 @@ static uint8_t *
 write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const char *whitelist)
 {
     struct data_channel_param *param;
-    size_t len, i = 0;
-    
+    size_t len;
+    uint8_t i = 0;
+
     while ((param = get_data_channel_param_by_index(data_channel, i++)) != NULL) {
         len = strlen(param->value);
         if (len == 0) {
@@ -117,53 +119,15 @@ write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const
         if (whitelist != NULL && strchr(whitelist, param->id) == NULL) {
             continue;
         }
-        
+
         *buf++ = (uint8_t) param->id;
         *buf++ = '=';
         memcpy(buf, param->value, len);
         buf += len;
         *buf++ = 0x0a;
     }
-    
+
     return buf;
-}
-
-static void
-receive_feeder_response(struct data_channel *data_channel, void *arg)
-{
-    int msg_len = 0, retries = 0, rc;
-
-    /* 15 seconds timeout */
-    while (msg_len <= 0 && retries < 300) {
-        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
-        usleep(1000 * 50);
-        ++retries;
-    }
-
-    if (retries == 300 || (msg_len == 1 && g_buf[0] == 0x80)) {
-        /* no more documents to scan */
-        exit(0); // TODO exit gracefully
-    }
-
-    data_channel->last_chunk = false;
-    data_channel->remaining_chunk_bytes = 0;
-    data_channel->tempfile = tmpfile();
-    if (data_channel->tempfile == NULL) {
-        fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
-        goto err;
-    }
-
-    rc = process_data(data_channel, g_buf, msg_len);
-    if (rc != 0) {
-        fprintf(stderr, "Couldn't process new-page data packet on data_channel %d\n", data_channel->conn);
-        goto err;
-    }
-    
-    data_channel->process_cb = receive_data;
-    return;
-    
-err:
-    abort();
 }
 
 static void
@@ -193,9 +157,9 @@ receive_data_footer(struct data_channel *data_channel, void *arg)
     // 8207 0001 0084 0000 0000
     // still unknown
 
-    data_channel->process_cb = receive_feeder_response;
+    data_channel->process_cb = receive_initial_data;
     return;
-    
+
 err:
     abort();
 }
@@ -216,14 +180,14 @@ parse_chunk_header(struct data_channel *data_channel)
 
     data_channel->remaining_chunk_bytes = (g_buf[10] | (g_buf[11] << 8));
     total_chunk_size = data_channel->remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
-    
+
     if (total_chunk_size > DATA_CHANNEL_CHUNK_SIZE) {
         fprintf(stderr, "Invalid chunk size on data_channel %d\n", data_channel->conn);
         return -1;
     }
-    
+
     data_channel->last_chunk = (total_chunk_size < DATA_CHANNEL_CHUNK_SIZE);
-    
+
     return 0;
 }
 
@@ -273,10 +237,10 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
         fclose(destfile);
         fclose(data_channel->tempfile);
         data_channel->tempfile = NULL;
-        
+
         data_channel->process_cb = receive_data_footer;
     }
-    
+
     return 0;
 }
 
@@ -284,7 +248,6 @@ static void
 receive_data(struct data_channel *data_channel, void *arg)
 {
     int msg_len = 0, retries = 0;
-    uint8_t *buf;
     int rc;
 
     while (msg_len <= 0 && retries < 10) {
@@ -305,6 +268,45 @@ receive_data(struct data_channel *data_channel, void *arg)
     }
 
     return;
+
+err:
+    abort();
+}
+
+static void
+receive_initial_data(struct data_channel *data_channel, void *arg)
+{
+    int msg_len = 0, retries = 0, rc;
+
+    /* 15 seconds timeout */
+    while (msg_len <= 0 && retries < 300) {
+        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        usleep(1000 * 50);
+        ++retries;
+    }
+
+    if (retries == 300 || (msg_len == 1 && g_buf[0] == 0x80)) {
+        /* no more documents to scan */
+        exit(0); // TODO exit gracefully
+    }
+
+    data_channel->last_chunk = false;
+    data_channel->remaining_chunk_bytes = 0;
+    data_channel->tempfile = tmpfile();
+    if (data_channel->tempfile == NULL) {
+        fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    rc = process_data(data_channel, g_buf, msg_len);
+    if (rc != 0) {
+        fprintf(stderr, "Couldn't process initial data packet on data_channel %d\n", data_channel->conn);
+        goto err;
+    }
+
+    data_channel->process_cb = receive_data;
+    return;
+
 err:
     abort();
 }
@@ -335,7 +337,7 @@ exchange_params2(struct data_channel *data_channel, void *arg)
     assert(g_buf[1] == 0x1d); // ??
     assert(g_buf[2] == 0x00); // ??
     assert(g_buf[msg_len - 1] == 0x00);
-    
+
     i = 0;
     buf_end = buf = g_buf + 3;
 
@@ -344,7 +346,7 @@ exchange_params2(struct data_channel *data_channel, void *arg)
         recv_params[i++] = strtol((char *) buf, (char **) &buf_end, 10);
         buf = ++buf_end;
     }
-    
+
     len = buf_end - g_buf - 4;
     assert(len < 15);
     param = get_data_channel_param_by_id(data_channel, 'R');
@@ -354,20 +356,20 @@ exchange_params2(struct data_channel *data_channel, void *arg)
     if (strncmp((char *) (g_buf + 3), param->value, len) != 0) {
         printf("Scanner does not support given dpi: %s. %.*s will be used instead\n",
                param->value, (int) len, (char *) (g_buf + 3));
-        
+
         memcpy(param->value, g_buf + 3, len);
         param->value[len] = 0;
     }
-    
+
     while(i < sizeof(recv_params) / sizeof(recv_params[0]) && *buf_end != 0x00) {
         tmp = strtol((char *) buf, (char **) &buf_end, 10);
         assert(tmp > 0 && tmp < USHRT_MAX);
         recv_params[i++] = tmp;
         buf = ++buf_end;
     }
-    
+
     assert(*buf == 0x00);
-    
+
     param = get_data_channel_param_by_id(data_channel, 'A');
     assert(param);
     sprintf(param->value, "0,0,%ld,%ld", recv_params[4], recv_params[6]);
@@ -377,7 +379,7 @@ exchange_params2(struct data_channel *data_channel, void *arg)
     *buf++ = 0x1b; // magic sequence
     *buf++ = 0x58; // packet id (?)
     *buf++ = 0x0a; // header end
-    
+
     buf = write_data_channel_params(data_channel, buf, "RMCJBNADGL");
     if (buf == NULL) {
         fprintf(stderr, "Failed to write scan params on data_channel %d\n", data_channel->conn);
@@ -398,15 +400,9 @@ exchange_params2(struct data_channel *data_channel, void *arg)
         goto err;
     }
 
-    data_channel->tempfile = tmpfile();
-    if (data_channel->tempfile == NULL) {
-        fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
-        goto err;
-    }
-    
     data_channel->process_cb = receive_data;
     return;
-    
+
 err:
     fprintf(stderr, "Failed to exchange scan params on data_channel %d\n", data_channel->conn);
     abort();
@@ -416,7 +412,6 @@ err:
 static void
 exchange_params1(struct data_channel *data_channel, void *arg)
 {
-    struct data_channel_param *param;
     uint8_t *buf, *buf_end;
     int msg_len = 0, retries = 0;
 
@@ -430,35 +425,35 @@ exchange_params1(struct data_channel *data_channel, void *arg)
         fprintf(stderr, "Couldn't receive initial scan params on data_channel %d\n", data_channel->conn);
         goto err;
     }
-    
+
     /* process received data */
     assert(g_buf[0] == 0x30); // ??
     assert(g_buf[1] == 0x15); // ??
     assert(g_buf[2] == 0x00); // ??
-    
+
     assert(g_buf[msg_len - 1] == 0x80); // end of message
     assert(g_buf[msg_len - 2] == 0x0a); // end of param
-    
+
     buf = g_buf + 3;
     buf_end = g_buf + msg_len - 2;
-    
+
     if (read_data_channel_params(data_channel, buf, buf_end, NULL) != 0) {
         fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
         goto err;
     }
-    
+
     /* prepare a response */
     buf = g_buf;
     *buf++ = 0x1b; // magic sequence
     *buf++ = 0x49; // packet id (?)
     *buf++ = 0x0a; // header end
-    
+
     buf = write_data_channel_params(data_channel, buf, "RMD");
     if (buf == NULL) {
         fprintf(stderr, "Failed to write initial scan params on data_channel %d\n", data_channel->conn);
         goto err;
     }
-    
+
     *buf++ = 0x80; // end of message
 
     msg_len = 0, retries = 0;
@@ -475,17 +470,17 @@ exchange_params1(struct data_channel *data_channel, void *arg)
 
     data_channel->process_cb = exchange_params2;
     return;
-    
+
 err:
     fprintf(stderr, "Failed to exchange initial scan params on data_channel %d\n", data_channel->conn);
     abort();
 }
 
-static void 
+static void
 init_connection(struct data_channel *data_channel, void *arg)
 {
     int msg_len = 0, retries = 0;
-    
+
     while (msg_len <= 0 && retries < 10) {
         msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
         usleep(1000 * 25);
@@ -496,10 +491,10 @@ init_connection(struct data_channel *data_channel, void *arg)
         fprintf(stderr, "Couldn't receive welcome message on data_channel %d\n", data_channel->conn);
         goto err;
     }
-    
+
     if (g_buf[0] != '+') {
         fprintf(stderr, "Received invalid welcome message on data_channel %d\n", data_channel->conn);
-        hexdump("received message", g_buf, msg_len);
+        hexdump("received message", g_buf, (size_t) msg_len);
         goto err;
     }
 
@@ -517,7 +512,7 @@ init_connection(struct data_channel *data_channel, void *arg)
 
     data_channel->process_cb = exchange_params1;
     return;
-    
+
 err:
     fprintf(stderr, "Failed to init data_channel %d\n", data_channel->conn);
     abort();
@@ -527,7 +522,7 @@ static void
 data_channel_loop(void *arg1, void *arg2)
 {
     struct data_channel *data_channel = arg1;
-    
+
     data_channel->process_cb(data_channel, arg2);
 }
 
@@ -558,8 +553,8 @@ init_data_channel(struct data_channel *data_channel, int conn)
 #define DATA_CH_PARAM(ID, VAL) \
     param = &data_channel->params[i++]; \
     param->id = ID; \
-    strcpy(param->value, VAL); 
-    
+    strcpy(param->value, VAL);
+
     DATA_CH_PARAM('F', "");
     DATA_CH_PARAM('D', "SIN");
     DATA_CH_PARAM('E', "");
@@ -573,7 +568,7 @@ init_data_channel(struct data_channel *data_channel, int conn)
     DATA_CH_PARAM('A', "");
     DATA_CH_PARAM('G', "1");
     DATA_CH_PARAM('L', "128");
-    
+
 #undef DATA_CH_PARAM
 }
 
@@ -594,12 +589,12 @@ data_channel_create(uint16_t port)
         fprintf(stderr, "Could not connect to scanner.\n");
         return;
     }
-    
+
     tid = event_thread_create("data_channel");
 
     data_channel = calloc(1, sizeof(*data_channel));
     init_data_channel(data_channel, conn);
-    
+
     event_thread_set_update_cb(tid, data_channel_loop, data_channel, NULL);
     event_thread_set_stop_cb(tid, data_channel_stop, data_channel, NULL);
 }
