@@ -35,8 +35,11 @@ struct data_channel {
 
     FILE *tempfile;
 
-    int remaining_chunk_bytes;
-    bool last_chunk;
+    struct data_channel_page_data {
+        int remaining_chunk_bytes;
+        bool last_chunk;
+    } page_data;
+
     int scanned_pages;
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
@@ -178,15 +181,15 @@ parse_chunk_header(struct data_channel *data_channel)
     progress = (g_buf[6] | (g_buf[7] << 8)) * 100 / DATA_CHANNEL_CHUNK_MAX_PROGRESS;
     printf("data_channel %d: Receiving data: %d%%\n", data_channel->conn, progress);
 
-    data_channel->remaining_chunk_bytes = (g_buf[10] | (g_buf[11] << 8));
-    total_chunk_size = data_channel->remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
+    data_channel->page_data.remaining_chunk_bytes = (g_buf[10] | (g_buf[11] << 8));
+    total_chunk_size = data_channel->page_data.remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
 
     if (total_chunk_size > DATA_CHANNEL_CHUNK_SIZE) {
         fprintf(stderr, "Invalid chunk size on data_channel %d\n", data_channel->conn);
         return -1;
     }
 
-    data_channel->last_chunk = (total_chunk_size < DATA_CHANNEL_CHUNK_SIZE);
+    data_channel->page_data.last_chunk = (total_chunk_size < DATA_CHANNEL_CHUNK_SIZE);
 
     return 0;
 }
@@ -199,7 +202,7 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
     char filename[64];
     FILE* destfile;
 
-    if (data_channel->remaining_chunk_bytes == 0) {
+    if (data_channel->page_data.remaining_chunk_bytes == 0) {
         rc = parse_chunk_header(data_channel);
         if (rc != 0) {
             fprintf(stderr, "Couldn't parse header on data_channel %d\n", data_channel->conn);
@@ -211,14 +214,14 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
     }
 
     fwrite(buf, sizeof(*buf), (size_t) msg_len, data_channel->tempfile);
-    data_channel->remaining_chunk_bytes -= msg_len;
+    data_channel->page_data.remaining_chunk_bytes -= msg_len;
 
-    if (data_channel->remaining_chunk_bytes < 0) {
+    if (data_channel->page_data.remaining_chunk_bytes < 0) {
         fprintf(stderr, "Received too much (invalid) data on data_channel %d\n", data_channel->conn);
         return -1;
     }
 
-    if (data_channel->remaining_chunk_bytes == 0 && data_channel->last_chunk) {
+    if (data_channel->page_data.remaining_chunk_bytes == 0 && data_channel->page_data.last_chunk) {
         printf("Successfully received image data on data_channel %d\n", data_channel->conn);
 
         assert(data_channel->scanned_pages < INT_MAX);
@@ -274,6 +277,12 @@ err:
 }
 
 static void
+data_channel_reset_page_data(struct data_channel *data_channel)
+{
+    memset(&data_channel->page_data, 0, sizeof(data_channel->page_data));
+}
+
+static void
 receive_initial_data(struct data_channel *data_channel, void *arg)
 {
     int msg_len = 0, retries = 0, rc;
@@ -290,8 +299,7 @@ receive_initial_data(struct data_channel *data_channel, void *arg)
         exit(0); // TODO exit gracefully
     }
 
-    data_channel->last_chunk = false;
-    data_channel->remaining_chunk_bytes = 0;
+    data_channel_reset_page_data(data_channel);
     data_channel->tempfile = tmpfile();
     if (data_channel->tempfile == NULL) {
         fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
