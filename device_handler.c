@@ -5,7 +5,6 @@
  */
 
 #include <stdio.h>
-#include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -14,7 +13,6 @@
 #include "event_thread.h"
 #include "iputils.h"
 #include "ber/snmp.h"
-#include "log.h"
 #include "network.h"
 #include "button_handler.h"
 
@@ -26,6 +24,9 @@ static char g_local_ip[16];
 static uint8_t g_buf[1024];
 static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
 
+static uint32_t g_brInfoPrinterUStatusOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
+static uint32_t g_brRegisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 1, 0, SNMP_MSG_OID_END };
+
 static int
 get_scanner_status(int conn)
 {
@@ -35,14 +36,12 @@ get_scanner_status(int conn)
     uint8_t *out;
     int rc = -1;
 
-    static uint32_t brInfoPrinterUStatusOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
-
     msg_header.snmp_ver = 0;
     msg_header.community = "public";
     msg_header.pdu_type = SNMP_DATA_T_PDU_GET_REQUEST;
     msg_header.request_id = 0;
 
-    varbind.oid = brInfoPrinterUStatusOID;
+    varbind.oid = g_brInfoPrinterUStatusOID;
     varbind.value_type = SNMP_DATA_T_NULL;
 
     out = snmp_encode_msg(g_buf_end, &msg_header, 1, &varbind);
@@ -75,7 +74,6 @@ register_scanner_host(int conn)
     char msg[3][768];
     int i, rc = -1;
     
-    uint32_t brRegisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 1, 0, SNMP_MSG_OID_END };
     const char *host_name = "darsto-br1";
     const char *scan_func[3] = { "IMAGE", "SCAN", "FILE" };
     
@@ -89,7 +87,7 @@ register_scanner_host(int conn)
                  "TYPE=BR;BUTTON=SCAN;USER=\"%s\";FUNC=%s;HOST=%s:%d;APPNUM=1;DURATION=360;CC=1;",
                  host_name, scan_func[i], g_local_ip, BUTTON_HANDLER_PORT);
         
-        varbind[i].oid = brRegisterKeyInfoOID;
+        varbind[i].oid = g_brRegisterKeyInfoOID;
         varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
         varbind[i].value.s = msg[i];
     }
@@ -133,7 +131,7 @@ static void
 device_handler_stop(void *arg1, void *arg2)
 {
     int *conn = arg1;
-    printf("stopping\n");
+
     network_udp_disconnect(*conn);
     network_udp_free(*conn);
     
@@ -145,29 +143,36 @@ device_handler_init(void)
 {
     struct event_thread *thread;
     int *conn_p;
-    int conn;
+    int conn, rc;
 
     if (iputils_get_local_ip(g_local_ip) != 0) {
-        fprintf(stderr, "Could not get local ip address.\n");
+        fprintf(stderr, "Fatal: could not get local ip address.\n");
         return;
     }
 
     conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), false);
     if (conn != 0) {
-        fprintf(stderr, "Could not setup connection.\n");
+        fprintf(stderr, "Fatal: could not setup connection.\n");
         return;
     }
-    
-    if (network_udp_connect(conn, inet_addr("10.0.0.149"), htons(SNMP_PORT)) != 0) {
+
+    rc = network_udp_connect(conn, inet_addr("10.0.0.149"), htons(SNMP_PORT));
+    if (rc != 0) {
+        fprintf(stderr, "Fatal: could not connect to scanner.\n");
         network_udp_free(conn);
-        fprintf(stderr, "Could not connect to scanner.\n");
         return;
     }
-    
+
     thread = event_thread_create("device_handler");
+    if (thread == NULL) {
+        fprintf(stderr, "Fatal: could not init device_handler thread.\n");
+        network_udp_disconnect(conn);
+        network_udp_free(conn);
+        return;
+    }
 
     button_handler_create(BUTTON_HANDLER_PORT);
-    
+
     conn_p = malloc(sizeof(conn));
     *conn_p = conn;
     event_thread_set_update_cb(thread, device_handler_loop, conn_p, NULL);
