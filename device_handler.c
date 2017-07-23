@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <sys/queue.h>
 #include "device_handler.h"
 #include "event_thread.h"
 #include "iputils.h"
@@ -23,6 +24,17 @@
 static char g_local_ip[16];
 static uint8_t g_buf[1024];
 static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
+
+struct device {
+    int conn;
+    const char *ip;
+    TAILQ_ENTRY(device) tailq;
+};
+
+struct device_handler {
+    struct event_thread *thread;
+    TAILQ_HEAD(, device) devices;
+};
 
 static uint32_t g_brInfoPrinterUStatusOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
 static uint32_t g_brRegisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 1, 0, SNMP_MSG_OID_END };
@@ -113,14 +125,51 @@ out:
 }
 
 static void
+device_handler_init_devices(struct device_handler *handler)
+{
+    struct device *dev;
+    const char *ip = "10.0.0.149"; /* FIXME: don't use hardcoded ip, read config file instead */
+    int conn, rc;
+
+    conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), false);
+    if (conn < 0) {
+        fprintf(stderr, "Could not setup connection for device at %s.\n", ip);
+        return;
+    }
+
+    rc = network_udp_connect(conn, inet_addr(ip), htons(SNMP_PORT));
+    if (rc != 0) {
+        fprintf(stderr, "Could not connect to device at %s.\n", ip);
+        network_udp_free(conn);
+        return;
+    }
+
+    dev = calloc(1, sizeof(*dev));
+    if (dev == NULL) {
+        fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
+        network_udp_disconnect(conn);
+        network_udp_free(conn);
+        return;
+    }
+
+    dev->conn = conn;
+    dev->ip = ip;
+
+    TAILQ_INSERT_TAIL(&handler->devices, dev, tailq);
+}
+
+static void
 device_handler_loop(void *arg1, void *arg2)
 {
-    int *conn = arg1;
+    struct device_handler *handler = arg1;
+    struct device *dev;
     int status;
 
-    status = get_scanner_status(*conn);
-    if (status == 0) {
-        register_scanner_host(*conn);
+    TAILQ_FOREACH(dev, &handler->devices, tailq) {
+        status = get_scanner_status(dev->conn);
+        if (status == 0) {
+            register_scanner_host(dev->conn);
+        }
     }
     
 out:
@@ -130,51 +179,45 @@ out:
 static void
 device_handler_stop(void *arg1, void *arg2)
 {
-    int *conn = arg1;
+    struct device_handler *handler = arg1;
+    struct device *dev;
 
-    network_udp_disconnect(*conn);
-    network_udp_free(*conn);
-    
-    free(conn);
+    while ((dev = TAILQ_FIRST(&handler->devices))) {
+        TAILQ_REMOVE(&handler->devices, dev, tailq);
+        free(dev);
+    }
 }
 
 void 
 device_handler_init(void)
 {
+    struct device_handler *handler;
     struct event_thread *thread;
-    int *conn_p;
-    int conn, rc;
 
     if (iputils_get_local_ip(g_local_ip) != 0) {
         fprintf(stderr, "Fatal: could not get local ip address.\n");
         return;
     }
 
-    conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), false);
-    if (conn != 0) {
-        fprintf(stderr, "Fatal: could not setup connection.\n");
-        return;
-    }
-
-    rc = network_udp_connect(conn, inet_addr("10.0.0.149"), htons(SNMP_PORT));
-    if (rc != 0) {
-        fprintf(stderr, "Fatal: could not connect to scanner.\n");
-        network_udp_free(conn);
-        return;
-    }
-
     thread = event_thread_create("device_handler");
     if (thread == NULL) {
         fprintf(stderr, "Fatal: could not init device_handler thread.\n");
-        network_udp_disconnect(conn);
-        network_udp_free(conn);
         return;
     }
 
     button_handler_create(BUTTON_HANDLER_PORT);
 
-    conn_p = malloc(sizeof(conn));
-    *conn_p = conn;
-    event_thread_set_update_cb(thread, device_handler_loop, conn_p, NULL);
-    event_thread_set_stop_cb(thread, device_handler_stop, conn_p, NULL);
+    handler = calloc(1, sizeof(*handler));
+    if (handler == NULL) {
+        fprintf(stderr, "Fatal: could not init device_handler thread.\n");
+        return;
+    }
+
+    handler->thread = thread;
+    TAILQ_INIT(&handler->devices);
+
+    device_handler_init_devices(handler);
+
+    event_thread_set_update_cb(thread, device_handler_loop, handler, NULL);
+    event_thread_set_stop_cb(thread, device_handler_stop, handler, NULL);
 }
