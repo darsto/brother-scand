@@ -17,7 +17,7 @@
 #define DATA_PORT 54921
 
 struct button_handler {
-    int thread;
+    struct event_thread *thread;
     int conn;
     uint8_t buf[1024];
     struct data_channel *channel;
@@ -64,8 +64,9 @@ button_handler_stop(void *arg1, void *arg2)
 void
 button_handler_create(uint16_t port)
 {
-    int thread, conn;
     struct button_handler *handler;
+    struct event_thread *thread;
+    int conn;
 
     conn = network_udp_init_conn(htons(port), true);
     if (conn < 0) {
@@ -74,7 +75,7 @@ button_handler_create(uint16_t port)
     }
 
     thread = event_thread_create("button_handler");
-    if (thread < 0) {
+    if (thread == NULL) {
         fprintf(stderr, "Could not create button handler thread.\n");
         return;
     }

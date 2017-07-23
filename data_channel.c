@@ -583,8 +583,9 @@ init_data_channel(struct data_channel *data_channel, int conn)
 struct data_channel *
 data_channel_create(const char *dest_ip, uint16_t port)
 {
-    int tid, conn;
     struct data_channel *data_channel;
+    struct event_thread *thread;
+    int conn;
 
     conn = network_tcp_init_conn(htons(DATA_CHANNEL_PORT), false);
     if (conn < 0) {
@@ -598,7 +599,7 @@ data_channel_create(const char *dest_ip, uint16_t port)
         return NULL;
     }
 
-    tid = event_thread_create("data_channel");
+    thread = event_thread_create("data_channel");
 
     data_channel = calloc(1, sizeof(*data_channel));
     if (data_channel == NULL) {
@@ -608,8 +609,8 @@ data_channel_create(const char *dest_ip, uint16_t port)
 
     init_data_channel(data_channel, conn);
 
-    event_thread_set_update_cb(tid, data_channel_loop, data_channel, NULL);
-    event_thread_set_stop_cb(tid, data_channel_stop, data_channel, NULL);
+    event_thread_set_update_cb(thread, data_channel_loop, data_channel, NULL);
+    event_thread_set_stop_cb(thread, data_channel_stop, data_channel, NULL);
 
     return data_channel;
 }

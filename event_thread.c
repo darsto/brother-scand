@@ -33,18 +33,6 @@ struct event_thread {
 static atomic_int g_thread_cnt;
 static struct event_thread g_threads[MAX_EVENT_THREADS];
 
-static struct event_thread *
-get_event_thread(int thread_id)
-{
-    struct event_thread *thread = NULL;
-
-    if ((unsigned) thread_id < MAX_EVENT_THREADS) {
-        thread = &g_threads[thread_id];
-    }
-
-    return thread;
-}
-
 static struct event *
 allocate_event(void (*callback)(void *, void *), void *arg1, void *arg2)
 {
@@ -64,9 +52,8 @@ allocate_event(void (*callback)(void *, void *), void *arg1, void *arg2)
 }
 
 int
-event_thread_enqueue_event(int thread_id, void (*callback)(void *, void *), void *arg1, void *arg2)
+event_thread_enqueue_event(struct event_thread *thread, void (*callback)(void *, void *), void *arg1, void *arg2)
 {
-    struct event_thread *thread = get_event_thread(thread_id);
     struct event *event;
     
     if (!thread) {
@@ -140,13 +127,18 @@ out:
     return NULL;
 }
 
-int
+struct event_thread *
 event_thread_create(const char *name)
 {
     struct event_thread *thread;
     int thread_id;
 
     thread_id = atomic_fetch_add(&g_thread_cnt, 1);
+    if (thread_id >= MAX_EVENT_THREADS) {
+        fprintf(stderr, "Fatal: reached thread limit of %d. Can't create another thread.\n", MAX_EVENT_THREADS);
+        goto name_err;
+    }
+
     thread = &g_threads[thread_id];
     
     thread->running = true;
@@ -169,28 +161,21 @@ event_thread_create(const char *name)
         goto events_err;
     }
     
-    return thread_id;
+    return thread;
     
 events_err:
     free(thread->events);  
 name_err:
     free(thread->name);
 err:
-    return -1;
+    return NULL;
 }
 
 int
-event_thread_set_update_cb(int thread_id, void (*update_cb)(void *, void *),
+event_thread_set_update_cb(struct event_thread *thread, void (*update_cb)(void *, void *),
                            void *arg1, void *arg2)
 {
-    struct event_thread *thread;
     struct event *event;
-
-    thread = get_event_thread(thread_id);
-    if (!thread) {
-        fprintf(stderr, "Trying to set update_cb for invalid thread %d.\n", thread_id);
-        return -1;
-    }
 
     event = allocate_event(update_cb, arg1, arg2);
     if (event == NULL) {
@@ -203,17 +188,10 @@ event_thread_set_update_cb(int thread_id, void (*update_cb)(void *, void *),
 }
 
 int
-event_thread_set_stop_cb(int thread_id, void (*stop_cb)(void *, void *),
+event_thread_set_stop_cb(struct event_thread *thread, void (*stop_cb)(void *, void *),
                          void *arg1, void *arg2)
 {
-    struct event_thread *thread;
     struct event *event;
-
-    thread = get_event_thread(thread_id);
-    if (!thread) {
-        fprintf(stderr, "Trying to set update_cb for invalid thread %d.\n", thread_id);
-        return -1;
-    }
 
     event = allocate_event(stop_cb, arg1, arg2);
     if (event == NULL) {
@@ -234,18 +212,15 @@ event_thread_stop_cb(void *arg1, void *arg2)
 }
 
 int
-event_thread_stop(int thread_id)
+event_thread_stop(struct event_thread *thread)
 {
-    struct event_thread *thread;
-
-    thread = get_event_thread(thread_id);
-    if (!thread) {
-        fprintf(stderr, "Trying to stop inexistent event thread %d.\n", thread_id);
+    if (thread == NULL) {
+        fprintf(stderr, "Trying to stop inexistent event thread %p.\n", (void *)thread);
         return -1;
     }
-    
-    if (event_thread_enqueue_event(thread_id, event_thread_stop_cb, thread, NULL) != 0) {
-        fprintf(stderr, "Failed to stop thread %d.\n", thread_id);
+
+    if (event_thread_enqueue_event(thread, event_thread_stop_cb, thread, NULL) != 0) {
+        fprintf(stderr, "Failed to stop thread %p.\n", (void *)thread);
         return -1;
     }
 
@@ -253,7 +228,7 @@ event_thread_stop(int thread_id)
     return 0;
 }
 
-void 
+void
 event_thread_lib_init(void)
 {
     atomic_init(&g_thread_cnt, 0);
@@ -282,7 +257,7 @@ event_thread_lib_shutdown_cb(void *arg)
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
         if (thread->running) {
-            event_thread_stop(i);
+            event_thread_stop(thread);
         }
     }
     

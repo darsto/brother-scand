@@ -143,9 +143,10 @@ device_handler_stop(void *arg1, void *arg2)
 void 
 device_handler_init(void)
 {
-    int tid, conn;
+    struct event_thread *thread;
     int *conn_p;
-    
+    int conn;
+
     if (iputils_get_local_ip(g_local_ip) != 0) {
         fprintf(stderr, "Could not get local ip address.\n");
         return;
@@ -163,12 +164,12 @@ device_handler_init(void)
         return;
     }
     
-    tid = event_thread_create("device_handler");
+    thread = event_thread_create("device_handler");
 
     button_handler_create(BUTTON_HANDLER_PORT);
     
     conn_p = malloc(sizeof(conn));
     *conn_p = conn;
-    event_thread_set_update_cb(tid, device_handler_loop, conn_p, NULL);
-    event_thread_set_stop_cb(tid, device_handler_stop, conn_p, NULL);
+    event_thread_set_update_cb(thread, device_handler_loop, conn_p, NULL);
+    event_thread_set_stop_cb(thread, device_handler_stop, conn_p, NULL);
 }
