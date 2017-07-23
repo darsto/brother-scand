@@ -10,15 +10,18 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <sys/queue.h>
+#include <time.h>
 #include "device_handler.h"
 #include "event_thread.h"
 #include "iputils.h"
 #include "ber/snmp.h"
 #include "network.h"
-#include "button_handler.h"
+#include "data_channel.h"
 
-#define BUTTON_HANDLER_PORT 54925
+#define DATA_PORT 54921
 #define DEVICE_HANDLER_PORT 49976
+#define DEVICE_REGISTER_DURATION_SEC 360
+#define BUTTON_HANDLER_PORT 54925
 #define SNMP_PORT 161
 
 static char g_local_ip[16];
@@ -26,8 +29,11 @@ static uint8_t g_buf[1024];
 static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
 
 struct device {
+    uint8_t buf[1024];
     int conn;
+    struct data_channel *channel;
     const char *ip;
+    time_t next_register_time;
     TAILQ_ENTRY(device) tailq;
 };
 
@@ -95,8 +101,8 @@ register_scanner_host(int conn)
 
     for (i = 0; i < 3; ++i) {
         snprintf(msg[i], sizeof(msg[i]),
-                 "TYPE=BR;BUTTON=SCAN;USER=\"%s\";FUNC=%s;HOST=%s:%d;APPNUM=1;DURATION=360;CC=1;",
-                 host_name, scan_func[i], g_local_ip, BUTTON_HANDLER_PORT);
+                 "TYPE=BR;BUTTON=SCAN;USER=\"%s\";FUNC=%s;HOST=%s:%d;APPNUM=1;DURATION=%d;CC=1;",
+                 host_name, scan_func[i], g_local_ip, BUTTON_HANDLER_PORT, DEVICE_REGISTER_DURATION_SEC);
         
         varbind[i].oid = g_brRegisterKeyInfoOID;
         varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
@@ -162,17 +168,46 @@ device_handler_loop(void *arg)
 {
     struct device_handler *handler = arg;
     struct device *dev;
-    int status;
+    time_t time_now;
+    int msg_len, status;
 
     TAILQ_FOREACH(dev, &handler->devices, tailq) {
-        status = get_scanner_status(dev->conn);
-        if (status == 0) {
-            register_scanner_host(dev->conn);
+        time_now = time(NULL);
+        if (difftime(time_now, dev->next_register_time) > 0) {
+            status = get_scanner_status(dev->conn);
+            if (status == 0) {
+                register_scanner_host(dev->conn);
+            } else {
+                fprintf(stderr, "Warn: device at %s is currently unreachable.\n", dev->ip);
+                continue;
+            }
+            dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
+        }
+
+        msg_len = network_udp_receive(dev->conn, dev->buf, sizeof(dev->buf));
+        if (msg_len < 0) {
+            continue;
+        }
+
+        msg_len = network_udp_send(dev->conn, dev->buf, msg_len);
+        if (msg_len < 0) {
+            perror("sendto");
+            continue;
+        }
+
+        if (dev->channel) {
+            fprintf(stderr, "WARN: data_channel has already been created for device at %s.\n", dev->ip);
+            continue;
+        }
+
+        dev->channel = data_channel_create("10.0.0.149", DATA_PORT);
+        if (dev->channel == NULL) {
+            fprintf(stderr, "Fatal: failed to create data_channel for device %s.\n", dev->ip);
+            continue;
         }
     }
     
-out:
-    sleep(300);
+    sleep(1);
 }
 
 static void
@@ -203,8 +238,6 @@ device_handler_init(void)
         fprintf(stderr, "Fatal: could not init device_handler thread.\n");
         return;
     }
-
-    button_handler_create(BUTTON_HANDLER_PORT);
 
     TAILQ_INIT(&handler->devices);
     device_handler_init_devices(handler);
