@@ -42,8 +42,8 @@ button_handler_loop(void *arg1, void *arg2)
 
     handler->channel = data_channel_create("10.0.0.149", DATA_PORT);
     if (handler->channel == NULL) {
-        fprintf(stderr, "Failed to create data_channel.\n");
-        abort();
+        fprintf(stderr, "Fatal: failed to create data_channel.\n");
+        goto out;
     }
 
 out:
@@ -70,17 +70,25 @@ button_handler_create(uint16_t port)
 
     conn = network_udp_init_conn(htons(port), true);
     if (conn < 0) {
-        fprintf(stderr, "Could not setup connection.\n");
+        fprintf(stderr, "Fatal: could not setup connection.\n");
         return;
     }
 
     thread = event_thread_create("button_handler");
     if (thread == NULL) {
-        fprintf(stderr, "Could not create button handler thread.\n");
+        fprintf(stderr, "Fatal: could not create button handler thread.\n");
+        network_udp_free(conn);
         return;
     }
 
     handler = calloc(1, sizeof(*handler));
+    if (handler == NULL) {
+        fprintf(stderr, "Fatal: could not calloc button handler.\n");
+        network_udp_disconnect(conn);
+        network_udp_free(conn);
+        return;
+    }
+
     handler->conn = conn;
     handler->thread = thread;
 
