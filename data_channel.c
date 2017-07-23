@@ -580,7 +580,7 @@ init_data_channel(struct data_channel *data_channel, int conn)
 #undef DATA_CH_PARAM
 }
 
-void
+struct data_channel *
 data_channel_create(const char *dest_ip, uint16_t port)
 {
     int tid, conn;
@@ -589,20 +589,27 @@ data_channel_create(const char *dest_ip, uint16_t port)
     conn = network_tcp_init_conn(htons(DATA_CHANNEL_PORT), false);
     if (conn < 0) {
         fprintf(stderr, "Could not setup connection.\n");
-        return;
+        return NULL;
     }
 
     if (network_tcp_connect(conn, inet_addr(dest_ip), htons(port)) != 0) {
         network_tcp_free(conn);
         fprintf(stderr, "Could not connect to scanner.\n");
-        return;
+        return NULL;
     }
 
     tid = event_thread_create("data_channel");
 
     data_channel = calloc(1, sizeof(*data_channel));
+    if (data_channel == NULL) {
+        fprintf(stderr, "Failed to calloc data_channel.\n");
+        return NULL;
+    }
+
     init_data_channel(data_channel, conn);
 
     event_thread_set_update_cb(tid, data_channel_loop, data_channel, NULL);
     event_thread_set_stop_cb(tid, data_channel_stop, data_channel, NULL);
+
+    return data_channel;
 }

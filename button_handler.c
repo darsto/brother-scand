@@ -11,7 +11,6 @@
 #include <stdbool.h>
 #include "button_handler.h"
 #include "event_thread.h"
-#include "log.h"
 #include "network.h"
 #include "data_channel.h"
 
@@ -21,6 +20,7 @@ struct button_handler {
     int thread;
     int conn;
     uint8_t buf[1024];
+    struct data_channel *channel;
 };
 
 static void
@@ -40,7 +40,12 @@ button_handler_loop(void *arg1, void *arg2)
         goto out;
     }
 
-    data_channel_create("10.0.0.149", DATA_PORT);
+    handler->channel = data_channel_create("10.0.0.149", DATA_PORT);
+    if (handler->channel == NULL) {
+        fprintf(stderr, "Failed to create data_channel.\n");
+        abort();
+    }
+
 out:
     sleep(1);
 }
