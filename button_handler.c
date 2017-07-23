@@ -17,16 +17,15 @@
 #define DATA_PORT 54921
 
 struct button_handler {
-    struct event_thread *thread;
     int conn;
     uint8_t buf[1024];
     struct data_channel *channel;
 };
 
 static void
-button_handler_loop(void *arg1, void *arg2)
+button_handler_loop(void *arg)
 {
-    struct button_handler *handler = arg1;
+    struct button_handler *handler = arg;
     int msg_len;
 
     msg_len = network_udp_receive(handler->conn, handler->buf, sizeof(handler->buf));
@@ -51,9 +50,9 @@ out:
 }
 
 static void
-button_handler_stop(void *arg1, void *arg2)
+button_handler_stop(void *arg)
 {
-    struct button_handler *handler = arg1;
+    struct button_handler *handler = arg;
 
     network_udp_disconnect(handler->conn);
     network_udp_free(handler->conn);
@@ -74,24 +73,20 @@ button_handler_create(uint16_t port)
         return;
     }
 
-    thread = event_thread_create("button_handler");
-    if (thread == NULL) {
-        fprintf(stderr, "Fatal: could not create button handler thread.\n");
-        network_udp_free(conn);
-        return;
-    }
-
     handler = calloc(1, sizeof(*handler));
     if (handler == NULL) {
         fprintf(stderr, "Fatal: could not calloc button handler.\n");
-        network_udp_disconnect(conn);
         network_udp_free(conn);
         return;
     }
 
     handler->conn = conn;
-    handler->thread = thread;
 
-    event_thread_set_update_cb(thread, button_handler_loop, handler, NULL);
-    event_thread_set_stop_cb(thread, button_handler_stop, handler, NULL);
+    thread = event_thread_create("button_handler", button_handler_loop, button_handler_stop, handler);
+    if (thread == NULL) {
+        fprintf(stderr, "Fatal: could not create button handler thread.\n");
+        network_udp_free(conn);
+        free(handler);
+        return;
+    }
 }

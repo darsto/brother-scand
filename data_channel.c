@@ -30,7 +30,7 @@ struct data_channel_param {
 
 struct data_channel {
     int conn;
-    void (*process_cb)(struct data_channel *data_channel, void *arg);
+    void (*process_cb)(struct data_channel *data_channel);
 
     FILE *tempfile;
 
@@ -45,7 +45,7 @@ struct data_channel {
     uint8_t buf[2048];
 };
 
-static void receive_initial_data(struct data_channel *data_channel, void *arg);
+static void receive_initial_data(struct data_channel *data_channel);
 
 static struct data_channel_param *
 get_data_channel_param_by_index(struct data_channel *data_channel, uint8_t index)
@@ -134,7 +134,7 @@ write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const
 }
 
 static void
-receive_data_footer(struct data_channel *data_channel, void *arg)
+receive_data_footer(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0;
     uint8_t msg[10];
@@ -248,7 +248,7 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
 }
 
 static void
-receive_data(struct data_channel *data_channel, void *arg)
+receive_data(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0;
     int rc;
@@ -283,7 +283,7 @@ data_channel_reset_page_data(struct data_channel *data_channel)
 }
 
 static void
-receive_initial_data(struct data_channel *data_channel, void *arg)
+receive_initial_data(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0, rc;
 
@@ -320,7 +320,7 @@ err:
 }
 
 static void
-exchange_params2(struct data_channel *data_channel, void *arg)
+exchange_params2(struct data_channel *data_channel)
 {
     struct data_channel_param *param;
     uint8_t *buf, *buf_end;
@@ -418,7 +418,7 @@ err:
 
 // TODO replace asserts with errors (its actually user input that's being handled)
 static void
-exchange_params1(struct data_channel *data_channel, void *arg)
+exchange_params1(struct data_channel *data_channel)
 {
     uint8_t *buf, *buf_end;
     int msg_len = 0, retries = 0;
@@ -485,7 +485,7 @@ err:
 }
 
 static void
-init_connection(struct data_channel *data_channel, void *arg)
+init_connection(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0;
 
@@ -527,17 +527,17 @@ err:
 }
 
 static void
-data_channel_loop(void *arg1, void *arg2)
+data_channel_loop(void *arg)
 {
-    struct data_channel *data_channel = arg1;
+    struct data_channel *data_channel = arg;
 
-    data_channel->process_cb(data_channel, arg2);
+    data_channel->process_cb(data_channel);
 }
 
 static void
-data_channel_stop(void *arg1, void *arg2)
+data_channel_stop(void *arg)
 {
-    struct data_channel *data_channel = arg1;
+    struct data_channel *data_channel = arg;
 
     if (data_channel->tempfile) {
         fclose(data_channel->tempfile);
@@ -594,23 +594,29 @@ data_channel_create(const char *dest_ip, uint16_t port)
     }
 
     if (network_tcp_connect(conn, inet_addr(dest_ip), htons(port)) != 0) {
-        network_tcp_free(conn);
         fprintf(stderr, "Could not connect to scanner.\n");
+        network_tcp_free(conn);
         return NULL;
     }
-
-    thread = event_thread_create("data_channel");
 
     data_channel = calloc(1, sizeof(*data_channel));
     if (data_channel == NULL) {
         fprintf(stderr, "Failed to calloc data_channel.\n");
+        network_tcp_disconnect(conn);
+        network_tcp_free(conn);
         return NULL;
     }
 
     init_data_channel(data_channel, conn);
 
-    event_thread_set_update_cb(thread, data_channel_loop, data_channel, NULL);
-    event_thread_set_stop_cb(thread, data_channel_stop, data_channel, NULL);
+    thread = event_thread_create("data_channel", data_channel_loop, data_channel_stop, data_channel);
+    if (thread == NULL) {
+        fprintf(stderr, "Failed to create data_channel thread.\n");
+        network_tcp_disconnect(conn);
+        network_tcp_free(conn);
+        free(data_channel);
+        return NULL;
+    }
 
     return data_channel;
 }

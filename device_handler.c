@@ -32,7 +32,6 @@ struct device {
 };
 
 struct device_handler {
-    struct event_thread *thread;
     TAILQ_HEAD(, device) devices;
 };
 
@@ -159,9 +158,9 @@ device_handler_init_devices(struct device_handler *handler)
 }
 
 static void
-device_handler_loop(void *arg1, void *arg2)
+device_handler_loop(void *arg)
 {
-    struct device_handler *handler = arg1;
+    struct device_handler *handler = arg;
     struct device *dev;
     int status;
 
@@ -177,9 +176,9 @@ out:
 }
 
 static void
-device_handler_stop(void *arg1, void *arg2)
+device_handler_stop(void *arg)
 {
-    struct device_handler *handler = arg1;
+    struct device_handler *handler = arg;
     struct device *dev;
 
     while ((dev = TAILQ_FIRST(&handler->devices))) {
@@ -199,25 +198,21 @@ device_handler_init(void)
         return;
     }
 
-    thread = event_thread_create("device_handler");
-    if (thread == NULL) {
-        fprintf(stderr, "Fatal: could not init device_handler thread.\n");
-        return;
-    }
-
-    button_handler_create(BUTTON_HANDLER_PORT);
-
     handler = calloc(1, sizeof(*handler));
     if (handler == NULL) {
         fprintf(stderr, "Fatal: could not init device_handler thread.\n");
         return;
     }
 
-    handler->thread = thread;
-    TAILQ_INIT(&handler->devices);
+    button_handler_create(BUTTON_HANDLER_PORT);
 
+    TAILQ_INIT(&handler->devices);
     device_handler_init_devices(handler);
 
-    event_thread_set_update_cb(thread, device_handler_loop, handler, NULL);
-    event_thread_set_stop_cb(thread, device_handler_stop, handler, NULL);
+    thread = event_thread_create("device_handler", device_handler_loop, device_handler_stop, handler);
+    if (thread == NULL) {
+        fprintf(stderr, "Fatal: could not init device_handler thread.\n");
+        free(handler);
+        return;
+    }
 }

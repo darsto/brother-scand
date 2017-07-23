@@ -24,8 +24,9 @@ struct event {
 struct event_thread {
     bool running;
     char *name;
-    struct event *update_cb;
-    struct event *stop_cb;
+    void (*update_cb)(void *);
+    void (*stop_cb)(void *);
+    void *arg;
     struct con_queue *events;
     pthread_t tid;
 };
@@ -75,9 +76,6 @@ static void
 event_thread_destroy(struct event_thread *thread)
 {
     struct event *event;
-
-    free(thread->update_cb);
-    free(thread->stop_cb);
     
     while (con_queue_pop(thread->events, (void **) &event) == 0) {
         free(event);
@@ -106,8 +104,7 @@ event_thread_loop(void *arg)
     
     while (thread->running) {
         if (thread->update_cb) {
-            event = thread->update_cb;
-            event->callback(event->arg1, event->arg2);
+            thread->update_cb(thread->arg);
         }
         
         if (con_queue_pop(thread->events, (void **) &event) == 0) {
@@ -117,8 +114,7 @@ event_thread_loop(void *arg)
     }
 
     if (thread->stop_cb) {
-        event = thread->stop_cb;
-        event->callback(event->arg1, event->arg2);
+        thread->stop_cb(thread->arg);
     }
     
 out:
@@ -128,7 +124,7 @@ out:
 }
 
 struct event_thread *
-event_thread_create(const char *name)
+event_thread_create(const char *name, void (*update_cb)(void *), void (*stop_cb)(void *), void *arg)
 {
     struct event_thread *thread;
     int thread_id;
@@ -155,6 +151,9 @@ event_thread_create(const char *name)
     }
     
     thread->events->size = 32;
+    thread->update_cb = update_cb;
+    thread->stop_cb = stop_cb;
+    thread->arg = arg;
 
     if (pthread_create(&thread->tid, NULL, event_thread_loop, thread) != 0) {
         fprintf(stderr, "Fatal: pthread_create() failed, cannot start event thread.\n");
@@ -169,38 +168,6 @@ name_err:
     free(thread->name);
 err:
     return NULL;
-}
-
-int
-event_thread_set_update_cb(struct event_thread *thread, void (*update_cb)(void *, void *),
-                           void *arg1, void *arg2)
-{
-    struct event *event;
-
-    event = allocate_event(update_cb, arg1, arg2);
-    if (event == NULL) {
-        fprintf(stderr, "Failed to allocate event for update_cb.\n");
-        return -1;
-    }
-    
-    thread->update_cb = event;
-    return 0;
-}
-
-int
-event_thread_set_stop_cb(struct event_thread *thread, void (*stop_cb)(void *, void *),
-                         void *arg1, void *arg2)
-{
-    struct event *event;
-
-    event = allocate_event(stop_cb, arg1, arg2);
-    if (event == NULL) {
-        fprintf(stderr, "Failed to allocate event for update_cb.\n");
-        return -1;
-    }
-
-    thread->stop_cb = event;
-    return 0;
 }
 
 static void
