@@ -165,7 +165,7 @@ device_handler_init(void)
     
     tid = event_thread_create("device_handler");
 
-    button_handler_run(BUTTON_HANDLER_PORT);
+    button_handler_create(BUTTON_HANDLER_PORT);
     
     conn_p = malloc(sizeof(conn));
     *conn_p = conn;

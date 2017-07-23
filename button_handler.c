@@ -17,21 +17,24 @@
 
 #define DATA_CHANNEL_PORT 49424
 
-static uint8_t g_buf[1024];
-static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
+struct button_handler {
+    int thread;
+    int conn;
+    uint8_t buf[1024];
+};
 
 static void
 button_handler_loop(void *arg1, void *arg2)
 {
-    int *conn = arg1;
+    struct button_handler *handler = arg1;
     int msg_len;
 
-    msg_len = network_udp_receive(*conn, g_buf, 1024);
+    msg_len = network_udp_receive(handler->conn, handler->buf, sizeof(handler->buf));
     if (msg_len < 0) {
         goto out;
     }
 
-    msg_len = network_udp_send(*conn, g_buf, msg_len);
+    msg_len = network_udp_send(handler->conn, handler->buf, msg_len);
     if (msg_len < 0) {
         perror("sendto");
         goto out;
@@ -45,19 +48,19 @@ out:
 static void
 button_handler_stop(void *arg1, void *arg2)
 {
-    int *conn = arg1;
+    struct button_handler *handler = arg1;
 
-    network_udp_disconnect(*conn);
-    network_udp_free(*conn);
+    network_udp_disconnect(handler->conn);
+    network_udp_free(handler->conn);
     
-    free(conn);
+    free(handler);
 }
 
 void
-button_handler_run(uint16_t port)
+button_handler_create(uint16_t port)
 {
-    int tid, conn;
-    int *conn_p;
+    int thread, conn;
+    struct button_handler *handler;
 
     conn = network_udp_init_conn(htons(port), true);
     if (conn < 0) {
@@ -65,10 +68,16 @@ button_handler_run(uint16_t port)
         return;
     }
 
-    tid = event_thread_create("button_handler");
+    thread = event_thread_create("button_handler");
+    if (thread < 0) {
+        fprintf(stderr, "Could not create button handler thread.\n");
+        return;
+    }
 
-    conn_p = malloc(sizeof(conn));
-    *conn_p = conn;
-    event_thread_set_update_cb(tid, button_handler_loop, conn_p, NULL);
-    event_thread_set_stop_cb(tid, button_handler_stop, conn_p, NULL);
+    handler = calloc(1, sizeof(*handler));
+    handler->conn = conn;
+    handler->thread = thread;
+
+    event_thread_set_update_cb(thread, button_handler_loop, handler, NULL);
+    event_thread_set_stop_cb(thread, button_handler_stop, handler, NULL);
 }

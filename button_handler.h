@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 
-void button_handler_run(uint16_t port);
+void button_handler_create(uint16_t port);
 
 #endif //DCP_J105_BUTTON_HANDLER_H
 
