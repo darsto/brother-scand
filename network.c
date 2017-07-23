@@ -171,7 +171,8 @@ network_udp_disconnect(int conn_id)
     struct network_conn *conn;
 
     conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
+    assert(conn->state == NETWORK_CONN_STATE_CONNECTED ||
+           (conn->server && conn->state == NETWORK_CONN_STATE_DISCONNECTED));
     
     /* dummy function */
     
