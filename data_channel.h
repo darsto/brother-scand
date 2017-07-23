@@ -7,6 +7,6 @@
 #ifndef BROTHER_DATA_CHANNEL_H
 #define BROTHER_DATA_CHANNEL_H
 
-void data_channel_create(uint16_t port);
+void data_channel_create(const char *dest_ip, uint16_t port);
 
 #endif //BROTHER_DATA_CHANNEL_H

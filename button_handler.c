@@ -15,7 +15,7 @@
 #include "network.h"
 #include "data_channel.h"
 
-#define DATA_CHANNEL_PORT 49424
+#define DATA_PORT 54921
 
 struct button_handler {
     int thread;
@@ -40,7 +40,7 @@ button_handler_loop(void *arg1, void *arg2)
         goto out;
     }
 
-    data_channel_create(DATA_CHANNEL_PORT);
+    data_channel_create("10.0.0.149", DATA_PORT);
 out:
     sleep(1);
 }

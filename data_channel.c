@@ -21,6 +21,7 @@
 #define DATA_CHANNEL_CHUNK_SIZE 0x10000
 #define DATA_CHANNEL_CHUNK_HEADER_SIZE 0xC
 #define DATA_CHANNEL_CHUNK_MAX_PROGRESS 0x1000
+#define DATA_CHANNEL_PORT 49424
 
 struct data_channel_param {
     char id;
@@ -580,18 +581,18 @@ init_data_channel(struct data_channel *data_channel, int conn)
 }
 
 void
-data_channel_create(uint16_t port)
+data_channel_create(const char *dest_ip, uint16_t port)
 {
     int tid, conn;
     struct data_channel *data_channel;
 
-    conn = network_tcp_init_conn(htons(port), false);
+    conn = network_tcp_init_conn(htons(DATA_CHANNEL_PORT), false);
     if (conn < 0) {
         fprintf(stderr, "Could not setup connection.\n");
         return;
     }
 
-    if (network_tcp_connect(conn, inet_addr("10.0.0.149"), htons(54921)) != 0) {
+    if (network_tcp_connect(conn, inet_addr(dest_ip), htons(port)) != 0) {
         network_tcp_free(conn);
         fprintf(stderr, "Could not connect to scanner.\n");
         return;
