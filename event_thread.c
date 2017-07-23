@@ -214,8 +214,8 @@ event_thread_stop_cb(void *arg1, void *arg2)
 int
 event_thread_stop(struct event_thread *thread)
 {
-    if (thread == NULL) {
-        fprintf(stderr, "Trying to stop inexistent event thread %p.\n", (void *)thread);
+    if (!thread->running) {
+        fprintf(stderr, "Thread %p is not running.\n", (void *)thread);
         return -1;
     }
 
@@ -226,6 +226,22 @@ event_thread_stop(struct event_thread *thread)
 
     pthread_kill(thread->tid, SIGUSR1);
     return 0;
+}
+
+struct event_thread *
+event_thread_self(void)
+{
+    struct event_thread *thread_tmp;
+    int i;
+
+    for (i = 0; i < MAX_EVENT_THREADS; ++i) {
+        thread_tmp = &g_threads[i];
+        if (thread_tmp->tid == pthread_self()) {
+            return thread_tmp;
+        }
+    }
+
+    return NULL;
 }
 
 void

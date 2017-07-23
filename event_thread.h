@@ -19,5 +19,6 @@ int event_thread_set_stop_cb(struct event_thread *thread, void (*stop_cb)(void *
 int event_thread_enqueue_event(struct event_thread *thread, void (*callback)(void *, void *),
                                void *arg1, void *arg2);
 int event_thread_stop(struct event_thread *thread);
+struct event_thread *event_thread_self(void);
 
 #endif //BROTHER_EVENT_THREAD_H
