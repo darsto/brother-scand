@@ -22,8 +22,6 @@
 #define DATA_CHANNEL_CHUNK_HEADER_SIZE 0xC
 #define DATA_CHANNEL_CHUNK_MAX_PROGRESS 0x1000
 
-static uint8_t g_buf[2048];
-
 struct data_channel_param {
     char id;
     char value[16];
@@ -43,6 +41,7 @@ struct data_channel {
     int scanned_pages;
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
+    uint8_t buf[2048];
 };
 
 static void receive_initial_data(struct data_channel *data_channel, void *arg);
@@ -140,7 +139,7 @@ receive_data_footer(struct data_channel *data_channel, void *arg)
     uint8_t msg[10];
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -155,7 +154,7 @@ receive_data_footer(struct data_channel *data_channel, void *arg)
         goto err;
     }
 
-    memcpy(msg, g_buf, sizeof(msg));
+    memcpy(msg, data_channel->buf, sizeof(msg));
     // 10 bytes of data, usually:
     // 8207 0001 0084 0000 0000
     // still unknown
@@ -178,10 +177,10 @@ parse_chunk_header(struct data_channel *data_channel)
     // 8-9 seem constant (00 00)
     // 10-11 is upcoming chunk size in bytes (little endian)
 
-    progress = (g_buf[6] | (g_buf[7] << 8)) * 100 / DATA_CHANNEL_CHUNK_MAX_PROGRESS;
+    progress = (data_channel->buf[6] | (data_channel->buf[7] << 8)) * 100 / DATA_CHANNEL_CHUNK_MAX_PROGRESS;
     printf("data_channel %d: Receiving data: %d%%\n", data_channel->conn, progress);
 
-    data_channel->page_data.remaining_chunk_bytes = (g_buf[10] | (g_buf[11] << 8));
+    data_channel->page_data.remaining_chunk_bytes = (data_channel->buf[10] | (data_channel->buf[11] << 8));
     total_chunk_size = data_channel->page_data.remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
 
     if (total_chunk_size > DATA_CHANNEL_CHUNK_SIZE) {
@@ -233,8 +232,8 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
         }
 
         fseek(data_channel->tempfile, 0, SEEK_SET);
-        while ((size = fread(g_buf, 1, sizeof(g_buf), data_channel->tempfile))) {
-            fwrite(g_buf, 1, size, destfile);
+        while ((size = fread(data_channel->buf, 1, sizeof(data_channel->buf), data_channel->tempfile))) {
+            fwrite(data_channel->buf, 1, size, destfile);
         }
 
         fclose(destfile);
@@ -254,7 +253,7 @@ receive_data(struct data_channel *data_channel, void *arg)
     int rc;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -264,7 +263,7 @@ receive_data(struct data_channel *data_channel, void *arg)
         goto err;
     }
 
-    rc = process_data(data_channel, g_buf, msg_len);
+    rc = process_data(data_channel, data_channel->buf, msg_len);
     if (rc != 0) {
         fprintf(stderr, "Couldn't process data packet on data_channel %d\n", data_channel->conn);
         goto err;
@@ -289,12 +288,12 @@ receive_initial_data(struct data_channel *data_channel, void *arg)
 
     /* 15 seconds timeout */
     while (msg_len <= 0 && retries < 300) {
-        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 50);
         ++retries;
     }
 
-    if (retries == 300 || (msg_len == 1 && g_buf[0] == 0x80)) {
+    if (retries == 300 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
         /* no more documents to scan */
         exit(0); // TODO exit gracefully
     }
@@ -306,7 +305,7 @@ receive_initial_data(struct data_channel *data_channel, void *arg)
         goto err;
     }
 
-    rc = process_data(data_channel, g_buf, msg_len);
+    rc = process_data(data_channel, data_channel->buf, msg_len);
     if (rc != 0) {
         fprintf(stderr, "Couldn't process initial data packet on data_channel %d\n", data_channel->conn);
         goto err;
@@ -330,7 +329,7 @@ exchange_params2(struct data_channel *data_channel, void *arg)
     long tmp;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -341,13 +340,13 @@ exchange_params2(struct data_channel *data_channel, void *arg)
     }
 
     /* process received data */
-    assert(g_buf[0] == 0x00); // ??
-    assert(g_buf[1] == 0x1d); // ??
-    assert(g_buf[2] == 0x00); // ??
-    assert(g_buf[msg_len - 1] == 0x00);
+    assert(data_channel->buf[0] == 0x00); // ??
+    assert(data_channel->buf[1] == 0x1d); // ??
+    assert(data_channel->buf[2] == 0x00); // ??
+    assert(data_channel->buf[msg_len - 1] == 0x00);
 
     i = 0;
-    buf_end = buf = g_buf + 3;
+    buf_end = buf = data_channel->buf + 3;
 
     /* process dpi x and y */
     while(i < 2 && *buf_end != 0x00) {
@@ -355,17 +354,17 @@ exchange_params2(struct data_channel *data_channel, void *arg)
         buf = ++buf_end;
     }
 
-    len = buf_end - g_buf - 4;
+    len = buf_end - data_channel->buf - 4;
     assert(len < 15);
     param = get_data_channel_param_by_id(data_channel, 'R');
     assert(param);
 
     /* previously sent and just received dpi should match */
-    if (strncmp((char *) (g_buf + 3), param->value, len) != 0) {
+    if (strncmp((char *) (data_channel->buf + 3), param->value, len) != 0) {
         printf("Scanner does not support given dpi: %s. %.*s will be used instead\n",
-               param->value, (int) len, (char *) (g_buf + 3));
+               param->value, (int) len, (char *) (data_channel->buf + 3));
 
-        memcpy(param->value, g_buf + 3, len);
+        memcpy(param->value, data_channel->buf + 3, len);
         param->value[len] = 0;
     }
 
@@ -383,7 +382,7 @@ exchange_params2(struct data_channel *data_channel, void *arg)
     sprintf(param->value, "0,0,%ld,%ld", recv_params[4], recv_params[6]);
 
     /* prepare a response */
-    buf = g_buf;
+    buf = data_channel->buf;
     *buf++ = 0x1b; // magic sequence
     *buf++ = 0x58; // packet id (?)
     *buf++ = 0x0a; // header end
@@ -398,7 +397,7 @@ exchange_params2(struct data_channel *data_channel, void *arg)
 
     msg_len = 0, retries = 0;
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_send(data_channel->conn, g_buf, buf - g_buf);
+        msg_len = network_tcp_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
         usleep(1000 * 25);
         ++retries;
     }
@@ -424,7 +423,7 @@ exchange_params1(struct data_channel *data_channel, void *arg)
     int msg_len = 0, retries = 0;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -435,15 +434,15 @@ exchange_params1(struct data_channel *data_channel, void *arg)
     }
 
     /* process received data */
-    assert(g_buf[0] == 0x30); // ??
-    assert(g_buf[1] == 0x15); // ??
-    assert(g_buf[2] == 0x00); // ??
+    assert(data_channel->buf[0] == 0x30); // ??
+    assert(data_channel->buf[1] == 0x15); // ??
+    assert(data_channel->buf[2] == 0x00); // ??
 
-    assert(g_buf[msg_len - 1] == 0x80); // end of message
-    assert(g_buf[msg_len - 2] == 0x0a); // end of param
+    assert(data_channel->buf[msg_len - 1] == 0x80); // end of message
+    assert(data_channel->buf[msg_len - 2] == 0x0a); // end of param
 
-    buf = g_buf + 3;
-    buf_end = g_buf + msg_len - 2;
+    buf = data_channel->buf + 3;
+    buf_end = data_channel->buf + msg_len - 2;
 
     if (read_data_channel_params(data_channel, buf, buf_end, NULL) != 0) {
         fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
@@ -451,7 +450,7 @@ exchange_params1(struct data_channel *data_channel, void *arg)
     }
 
     /* prepare a response */
-    buf = g_buf;
+    buf = data_channel->buf;
     *buf++ = 0x1b; // magic sequence
     *buf++ = 0x49; // packet id (?)
     *buf++ = 0x0a; // header end
@@ -466,7 +465,7 @@ exchange_params1(struct data_channel *data_channel, void *arg)
 
     msg_len = 0, retries = 0;
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_send(data_channel->conn, g_buf, buf - g_buf);
+        msg_len = network_tcp_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
         usleep(1000 * 25);
         ++retries;
     }
@@ -490,7 +489,7 @@ init_connection(struct data_channel *data_channel, void *arg)
     int msg_len = 0, retries = 0;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, g_buf, sizeof(g_buf));
+        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -500,9 +499,9 @@ init_connection(struct data_channel *data_channel, void *arg)
         goto err;
     }
 
-    if (g_buf[0] != '+') {
+    if (data_channel->buf[0] != '+') {
         fprintf(stderr, "Received invalid welcome message on data_channel %d\n", data_channel->conn);
-        hexdump("received message", g_buf, (size_t) msg_len);
+        hexdump("received message", data_channel->buf, (size_t) msg_len);
         goto err;
     }
 
