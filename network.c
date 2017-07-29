@@ -130,6 +130,24 @@ network_init_conn(enum network_type type, in_port_t local_port, in_addr_t dest_a
 }
 
 int
+network_reconnect(int conn_id)
+{
+    struct network_conn *conn;
+
+    conn = get_network_conn(conn_id);
+
+    if (conn->connected) {
+        network_disconnect(conn_id);
+    }
+
+    if (init_conn(conn, conn->sin_me.sin_port, conn->sin_oth.sin_addr.s_addr, conn->sin_oth.sin_port) != 0) {
+        return -1;
+    }
+
+    return conn_id;
+}
+
+int
 network_send(int conn_id, const void *buf, size_t len)
 {
     struct network_conn *conn;
