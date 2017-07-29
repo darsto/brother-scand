@@ -7,6 +7,6 @@
 #ifndef DCP_J105_DEVICE_HANDLER_H
 #define DCP_J105_DEVICE_HANDLER_H
 
-void device_handler_init(void);
+void device_handler_init(const char *config_path);
 
 #endif //DCP_J105_DEVICE_HANDLER_H

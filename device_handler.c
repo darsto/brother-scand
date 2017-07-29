@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <sys/queue.h>
 #include <time.h>
+#include <memory.h>
 #include "device_handler.h"
 #include "event_thread.h"
 #include "iputils.h"
@@ -129,24 +130,23 @@ out:
     return rc;
 }
 
-static void
-device_handler_init_devices(struct device_handler *handler)
+static struct device *
+device_handler_add_device(struct device_handler *handler, const char *ip)
 {
     struct device *dev;
-    const char *ip = "10.0.0.149"; /* FIXME: don't use hardcoded ip, read config file instead */
     int conn, rc;
 
     conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), false);
     if (conn < 0) {
         fprintf(stderr, "Could not setup connection for device at %s.\n", ip);
-        return;
+        return NULL;
     }
 
     rc = network_udp_connect(conn, inet_addr(ip), htons(SNMP_PORT));
     if (rc != 0) {
         fprintf(stderr, "Could not connect to device at %s.\n", ip);
         network_udp_free(conn);
-        return;
+        return NULL;
     }
 
     dev = calloc(1, sizeof(*dev));
@@ -154,13 +154,44 @@ device_handler_init_devices(struct device_handler *handler)
         fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
         network_udp_disconnect(conn);
         network_udp_free(conn);
-        return;
+        return NULL;
     }
 
     dev->conn = conn;
-    dev->ip = ip;
+    dev->ip = strdup(ip);
 
     TAILQ_INSERT_TAIL(&handler->devices, dev, tailq);
+    return dev;
+}
+
+static int
+device_handler_init_devices(struct device_handler *handler, const char *config_path)
+{
+    FILE* config;
+    struct device *dev;
+    char ip[256];
+    int rc = -1;
+
+    config = fopen(config_path, "r");
+    if (config == NULL) {
+        fprintf(stderr, "Could not open config file '%s'.\n", config_path);
+        abort();
+    }
+
+    while (fgets((char *) g_buf, sizeof(g_buf), config)) {
+        if (sscanf((char *) g_buf, "ip %64s", ip) == 1) {
+            dev = device_handler_add_device(handler, ip);
+            if (dev == NULL) {
+                fprintf(stderr, "Fatal: could not load device '%s'.\n", ip);
+                goto out;
+            }
+        }
+    }
+
+    rc = 0;
+out:
+    fclose(config);
+    return rc;
 }
 
 static void
@@ -200,7 +231,7 @@ device_handler_loop(void *arg)
             continue;
         }
 
-        dev->channel = data_channel_create("10.0.0.149", DATA_PORT);
+        dev->channel = data_channel_create(dev->ip, DATA_PORT);
         if (dev->channel == NULL) {
             fprintf(stderr, "Fatal: failed to create data_channel for device %s.\n", dev->ip);
             continue;
@@ -223,7 +254,7 @@ device_handler_stop(void *arg)
 }
 
 void 
-device_handler_init(void)
+device_handler_init(const char *config_path)
 {
     struct device_handler *handler;
     struct event_thread *thread;
@@ -240,7 +271,10 @@ device_handler_init(void)
     }
 
     TAILQ_INIT(&handler->devices);
-    device_handler_init_devices(handler);
+    if (device_handler_init_devices(handler, config_path) != 0) {
+        fprintf(stderr, "Fatal: failed to init device handler.\n");
+        return;
+    }
 
     thread = event_thread_create("device_handler", device_handler_loop, device_handler_stop, handler);
     if (thread == NULL) {
