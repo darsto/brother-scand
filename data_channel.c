@@ -44,6 +44,8 @@ struct data_channel {
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
     uint8_t buf[2048];
+    char *dest_ip;
+    uint16_t dest_port;
 };
 
 static void receive_initial_data(struct data_channel *data_channel);
@@ -499,6 +501,17 @@ init_connection(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0;
 
+    if (data_channel->conn >= 0) {
+        data_channel->conn = network_reconnect(data_channel->conn);
+    } else {
+        data_channel->conn = network_init_conn(NETWORK_TYPE_TCP, htons(DATA_CHANNEL_PORT), inet_addr(data_channel->dest_ip), htons(data_channel->dest_port));
+    }
+
+    if (data_channel->conn < 0) {
+        fprintf(stderr, "Could not connect to scanner.\n");
+        goto err;
+    }
+
     while (msg_len <= 0 && retries < 10) {
         msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
@@ -555,6 +568,7 @@ data_channel_stop(void *arg)
 
     network_disconnect(data_channel->conn);
 
+    free(data_channel->dest_ip);
     free(data_channel);
 }
 
@@ -629,28 +643,21 @@ data_channel_create(const char *dest_ip, uint16_t port)
 {
     struct data_channel *data_channel;
     struct event_thread *thread;
-    int conn;
-
-    conn = network_init_conn(NETWORK_TYPE_TCP, htons(DATA_CHANNEL_PORT), inet_addr(dest_ip), htons(port));
-    if (conn < 0) {
-        fprintf(stderr, "Could not connect to scanner.\n");
-        return NULL;
-    }
 
     data_channel = calloc(1, sizeof(*data_channel));
     if (data_channel == NULL) {
         fprintf(stderr, "Failed to calloc data_channel.\n");
-        network_disconnect(conn);
         return NULL;
     }
 
-    data_channel->conn = conn;
+    data_channel->conn = -1;
+    data_channel->dest_ip = strdup(dest_ip);
+    data_channel->dest_port = port;
     data_channel->process_cb = init_data_channel;
 
     thread = event_thread_create("data_channel", data_channel_loop, data_channel_stop, data_channel);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create data_channel thread.\n");
-        network_disconnect(conn);
         free(data_channel);
         return NULL;
     }
