@@ -4,6 +4,7 @@
  * that can be found in the LICENSE file.
  */
 
+#include <unistd.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -21,8 +22,14 @@ struct event {
     void *arg2;
 };
 
+enum event_thread_state {
+    EVENT_THREAD_RUNNING,
+    EVENT_THREAD_SLEEPING,
+    EVENT_THREAD_STOPPED,
+};
+
 struct event_thread {
-    bool running;
+    enum event_thread_state state;
     char *name;
     void (*update_cb)(void *);
     void (*stop_cb)(void *);
@@ -48,7 +55,7 @@ allocate_event(void (*callback)(void *, void *), void *arg1, void *arg2)
     event->callback = callback;
     event->arg1 = arg1;
     event->arg2 = arg2;
-    
+
     return event;
 }
 
@@ -56,18 +63,18 @@ int
 event_thread_enqueue_event(struct event_thread *thread, void (*callback)(void *, void *), void *arg1, void *arg2)
 {
     struct event *event;
-    
+
     if (!thread) {
         fprintf(stderr, "Trying to enqueue event to inexistent thread.\n");
         return -1;
     }
-    
+
     event = allocate_event(callback, arg1, arg2);
     if (event == NULL) {
         fprintf(stderr, "Failed to allocate event for enqueuing.\n");
         return -1;
     }
-    
+
     con_queue_push(thread->events, event);
     return 0;
 }
@@ -76,13 +83,59 @@ static void
 event_thread_destroy(struct event_thread *thread)
 {
     struct event *event;
-    
+
     while (con_queue_pop(thread->events, (void **) &event) == 0) {
         free(event);
     }
-    
+
     free(thread->events);
     free(thread->name);
+}
+
+static void
+event_thread_set_state_cb(void *arg1, void *arg2)
+{
+    struct event_thread *thread = arg1;
+
+    if (thread->state == EVENT_THREAD_STOPPED) {
+        /* thread will be stopped with current loop tick */
+        return;
+    }
+
+    thread->state = (enum event_thread_state) (intptr_t) arg2;
+}
+
+int
+event_thread_pause(struct event_thread *thread)
+{
+    if (thread->state == EVENT_THREAD_STOPPED) {
+        fprintf(stderr, "Thread %p is not running.\n", (void *)thread);
+        return -1;
+    }
+
+    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread, (void *) (intptr_t) EVENT_THREAD_SLEEPING) != 0) {
+        fprintf(stderr, "Failed to pause thread %p.\n", (void *)thread);
+        return -1;
+    }
+
+    return 0;
+}
+
+int
+event_thread_kick(struct event_thread *thread)
+{
+    if (thread->state == EVENT_THREAD_STOPPED) {
+        fprintf(stderr, "Thread %p is not running.\n", (void *)thread);
+        return -1;
+    }
+
+    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread, (void *) (intptr_t)  EVENT_THREAD_RUNNING) != 0) {
+        fprintf(stderr, "Failed to wake thread %p.\n", (void *)thread);
+        return -1;
+    }
+
+    pthread_kill(thread->tid, SIGUSR1);
+    return 0;
 }
 
 static void
@@ -96,29 +149,36 @@ event_thread_loop(void *arg)
 {
     struct event_thread *thread = arg;
     struct event *event;
+    sigset_t sigset;
 
     if (signal(SIGUSR1, sig_handler) == SIG_ERR) {
         fprintf(stderr, "%s: Failed to bind SIGUSR1 handler.\n", thread->name);
         goto out;
     }
-    
-    while (thread->running) {
-        if (thread->update_cb) {
-            thread->update_cb(thread->arg);
-        }
-        
+
+    sigemptyset(&sigset);
+
+    while (thread->state != EVENT_THREAD_STOPPED) {
         if (con_queue_pop(thread->events, (void **) &event) == 0) {
             event->callback(event->arg1, event->arg2);
             free(event);
+        }
+
+        if (thread->update_cb) {
+            thread->update_cb(thread->arg);
+        }
+
+        if (thread->state == EVENT_THREAD_SLEEPING) {
+            sigsuspend(&sigset);
         }
     }
 
     if (thread->stop_cb) {
         thread->stop_cb(thread->arg);
     }
-    
+
 out:
-    event_thread_destroy(thread);    
+    event_thread_destroy(thread);
     pthread_exit(NULL);
     return NULL;
 }
@@ -136,20 +196,20 @@ event_thread_create(const char *name, void (*update_cb)(void *), void (*stop_cb)
     }
 
     thread = &g_threads[thread_id];
-    
-    thread->running = true;
+
+    thread->state = EVENT_THREAD_RUNNING;
     thread->name = strdup(name);
     if (!thread->name) {
         fprintf(stderr, "Fatal: strdup() failed, cannot start event thread.\n");
         goto err;
     }
-    
+
     thread->events = calloc(1, sizeof(*thread->events) + 32 * sizeof(void *));
     if (!thread->events) {
         fprintf(stderr, "Fatal: calloc() failed, cannot start event thread.\n");
         goto name_err;
     }
-    
+
     thread->events->size = 32;
     thread->update_cb = update_cb;
     thread->stop_cb = stop_cb;
@@ -159,34 +219,26 @@ event_thread_create(const char *name, void (*update_cb)(void *), void (*stop_cb)
         fprintf(stderr, "Fatal: pthread_create() failed, cannot start event thread.\n");
         goto events_err;
     }
-    
+
     return thread;
-    
+
 events_err:
-    free(thread->events);  
+    free(thread->events);
 name_err:
     free(thread->name);
 err:
     return NULL;
 }
 
-static void
-event_thread_stop_cb(void *arg1, void *arg2)
-{
-    struct event_thread *thread = arg1;
-    
-    thread->running = false;
-}
-
 int
 event_thread_stop(struct event_thread *thread)
 {
-    if (!thread->running) {
+    if (thread->state == EVENT_THREAD_STOPPED) {
         fprintf(stderr, "Thread %p is not running.\n", (void *)thread);
         return -1;
     }
 
-    if (event_thread_enqueue_event(thread, event_thread_stop_cb, thread, NULL) != 0) {
+    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread, (void *) (intptr_t) EVENT_THREAD_STOPPED) != 0) {
         fprintf(stderr, "Failed to stop thread %p.\n", (void *)thread);
         return -1;
     }
@@ -225,7 +277,7 @@ event_thread_lib_wait(void)
 
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
-        if (thread->running) {
+        if (thread->state != EVENT_THREAD_STOPPED) {
             pthread_join(thread->tid, NULL);
         }
     }
@@ -239,11 +291,11 @@ event_thread_lib_shutdown_cb(void *arg)
 
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
-        if (thread->running) {
+        if (thread->state != EVENT_THREAD_STOPPED) {
             event_thread_stop(thread);
         }
     }
-    
+
     return NULL;
 }
 
