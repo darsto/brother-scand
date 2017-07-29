@@ -159,7 +159,7 @@ event_thread_loop(void *arg)
     sigemptyset(&sigset);
 
     while (thread->state != EVENT_THREAD_STOPPED) {
-        if (con_queue_pop(thread->events, (void **) &event) == 0) {
+        while (con_queue_pop(thread->events, (void **) &event) == 0) {
             event->callback(event->arg1, event->arg2);
             free(event);
         }
