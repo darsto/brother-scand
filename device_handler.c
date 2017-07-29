@@ -32,6 +32,7 @@ static uint8_t *const g_buf_end = g_buf + sizeof(g_buf) - 1;
 struct device {
     uint8_t buf[1024];
     int conn;
+    int button_conn;
     struct data_channel *channel;
     const char *ip;
     int status;
@@ -135,7 +136,7 @@ static struct device *
 device_handler_add_device(struct device_handler *handler, const char *ip)
 {
     struct device *dev;
-    int conn, rc;
+    int conn, button_conn, rc;
 
     conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), false);
     if (conn < 0) {
@@ -150,15 +151,25 @@ device_handler_add_device(struct device_handler *handler, const char *ip)
         return NULL;
     }
 
+    button_conn = network_udp_init_conn(htons(BUTTON_HANDLER_PORT), true);
+    if (conn < 0) {
+        fprintf(stderr, "Fatal: could not setup button handler connection at %s.\n", ip);
+        network_udp_disconnect(conn);
+        network_udp_free(conn);
+        return NULL;
+    }
+
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
         fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
+        network_udp_free(button_conn);
         network_udp_disconnect(conn);
         network_udp_free(conn);
         return NULL;
     }
 
     dev->conn = conn;
+    dev->button_conn = button_conn;
     dev->ip = strdup(ip);
     dev->channel = data_channel_create(dev->ip, DATA_PORT);
     if (dev->channel == NULL) {
@@ -227,12 +238,12 @@ device_handler_loop(void *arg)
         }
 
         /* try to receive scan event */
-        msg_len = network_udp_receive(dev->conn, dev->buf, sizeof(dev->buf));
+        msg_len = network_udp_receive(dev->button_conn, dev->buf, sizeof(dev->buf));
         if (msg_len < 0) {
             continue;
         }
 
-        msg_len = network_udp_send(dev->conn, dev->buf, msg_len);
+        msg_len = network_udp_send(dev->button_conn, dev->buf, msg_len);
         if (msg_len < 0) {
             perror("sendto");
             continue;
