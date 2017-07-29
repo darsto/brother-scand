@@ -69,13 +69,13 @@ get_scanner_status(int conn)
     out = snmp_encode_msg(g_buf_end, &msg_header, 1, &varbind);
     msg_len = (int) (g_buf_end - out + 1);
 
-    msg_len = network_udp_send(conn, out, msg_len) != 0;
+    msg_len = network_send(conn, out, msg_len) != 0;
     if (msg_len < 0) {
         perror("sendto");
         goto out;
     }
     
-    msg_len = network_udp_receive(conn, g_buf, 1024);
+    msg_len = network_receive(conn, g_buf, 1024);
     if (msg_len < 0) {
         perror("recvfrom");
         goto out;
@@ -117,13 +117,13 @@ register_scanner_host(int conn)
     out = snmp_encode_msg(g_buf_end, &msg_header, 3, varbind);
     msg_len = (int) (g_buf_end - out + 1);
 
-    msg_len = network_udp_send(conn, out, msg_len);
+    msg_len = network_send(conn, out, msg_len);
     if (msg_len < 0) {
         perror("sendto");
         goto out;
     }
 
-    msg_len = network_udp_receive(conn, g_buf, 1024);
+    msg_len = network_receive(conn, g_buf, 1024);
     if (msg_len < 0) {
         perror("recvfrom");
         goto out;
@@ -140,24 +140,24 @@ device_handler_add_device(struct device_handler *handler, const char *ip)
     struct device *dev;
     int conn, button_conn, rc;
 
-    conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), inet_addr(ip), htons(SNMP_PORT));
+    conn = network_init_conn(NETWORK_TYPE_UDP, htons(DEVICE_HANDLER_PORT), inet_addr(ip), htons(SNMP_PORT));
     if (conn < 0) {
         fprintf(stderr, "Could not connect to device at %s.\n", ip);
         return NULL;
     }
 
-    button_conn = network_udp_init_conn(htons(BUTTON_HANDLER_PORT), 0, 0);
+    button_conn = network_init_conn(NETWORK_TYPE_UDP, htons(BUTTON_HANDLER_PORT), 0, 0);
     if (conn < 0) {
         fprintf(stderr, "Could not setup button handler connection at %s.\n", ip);
-        network_udp_disconnect(conn);
+        network_disconnect(conn);
         return NULL;
     }
 
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
         fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
-        network_udp_disconnect(button_conn);
-        network_udp_disconnect(conn);
+        network_disconnect(button_conn);
+        network_disconnect(conn);
         return NULL;
     }
 
@@ -235,12 +235,12 @@ device_handler_loop(void *arg)
         }
 
         /* try to receive scan event */
-        msg_len = network_udp_receive(dev->button_conn, dev->buf, sizeof(dev->buf));
+        msg_len = network_receive(dev->button_conn, dev->buf, sizeof(dev->buf));
         if (msg_len < 0) {
             continue;
         }
 
-        msg_len = network_udp_send(dev->button_conn, dev->buf, msg_len);
+        msg_len = network_send(dev->button_conn, dev->buf, msg_len);
         if (msg_len < 0) {
             perror("sendto");
             continue;

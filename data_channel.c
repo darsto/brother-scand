@@ -141,7 +141,7 @@ receive_data_footer(struct data_channel *data_channel)
     uint8_t msg[10];
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -256,7 +256,7 @@ receive_data(struct data_channel *data_channel)
     int rc;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -298,7 +298,7 @@ receive_initial_data(struct data_channel *data_channel)
 
     /* 15 seconds timeout */
     while (msg_len <= 0 && retries < 300) {
-        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 50);
         ++retries;
     }
@@ -340,7 +340,7 @@ exchange_params2(struct data_channel *data_channel)
     long tmp;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -408,7 +408,7 @@ exchange_params2(struct data_channel *data_channel)
 
     msg_len = 0, retries = 0;
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
+        msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
         usleep(1000 * 25);
         ++retries;
     }
@@ -434,7 +434,7 @@ exchange_params1(struct data_channel *data_channel)
     int msg_len = 0, retries = 0;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -476,7 +476,7 @@ exchange_params1(struct data_channel *data_channel)
 
     msg_len = 0, retries = 0;
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
+        msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
         usleep(1000 * 25);
         ++retries;
     }
@@ -500,7 +500,7 @@ init_connection(struct data_channel *data_channel)
     int msg_len = 0, retries = 0;
 
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         usleep(1000 * 25);
         ++retries;
     }
@@ -518,7 +518,7 @@ init_connection(struct data_channel *data_channel)
 
     msg_len = 0, retries = 0;
     while (msg_len <= 0 && retries < 10) {
-        msg_len = network_tcp_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
+        msg_len = network_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
         usleep(1000 * 25);
         ++retries;
     }
@@ -553,7 +553,7 @@ data_channel_stop(void *arg)
         fclose(data_channel->tempfile);
     }
 
-    network_tcp_disconnect(data_channel->conn);
+    network_disconnect(data_channel->conn);
 
     free(data_channel);
 }
@@ -631,7 +631,7 @@ data_channel_create(const char *dest_ip, uint16_t port)
     struct event_thread *thread;
     int conn;
 
-    conn = network_tcp_init_conn(htons(DATA_CHANNEL_PORT), inet_addr(dest_ip), htons(port));
+    conn = network_init_conn(NETWORK_TYPE_TCP, htons(DATA_CHANNEL_PORT), inet_addr(dest_ip), htons(port));
     if (conn < 0) {
         fprintf(stderr, "Could not connect to scanner.\n");
         return NULL;
@@ -640,7 +640,7 @@ data_channel_create(const char *dest_ip, uint16_t port)
     data_channel = calloc(1, sizeof(*data_channel));
     if (data_channel == NULL) {
         fprintf(stderr, "Failed to calloc data_channel.\n");
-        network_tcp_disconnect(conn);
+        network_disconnect(conn);
         return NULL;
     }
 
@@ -650,7 +650,7 @@ data_channel_create(const char *dest_ip, uint16_t port)
     thread = event_thread_create("data_channel", data_channel_loop, data_channel_stop, data_channel);
     if (thread == NULL) {
         fprintf(stderr, "Failed to create data_channel thread.\n");
-        network_tcp_disconnect(conn);
+        network_disconnect(conn);
         free(data_channel);
         return NULL;
     }

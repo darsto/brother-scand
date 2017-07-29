@@ -9,14 +9,14 @@
 #ifndef BROTHER_NETWORK_H
 #define BROTHER_NETWORK_H
 
-int network_udp_init_conn(in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port);
-int network_udp_send(int conn_id, const void *buf, size_t len);
-int network_udp_receive(int conn_id, void *buf, size_t len);
-int network_udp_disconnect(int conn_id);
+enum network_type {
+    NETWORK_TYPE_UDP,
+    NETWORK_TYPE_TCP,
+};
 
-int network_tcp_init_conn(in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port);
-int network_tcp_send(int conn_id, const void *buf, size_t len);
-int network_tcp_receive(int conn_id, void *buf, size_t len);
-int network_tcp_disconnect(int conn_id);
+int network_init_conn(enum network_type type, in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port);
+int network_send(int conn_id, const void *buf, size_t len);
+int network_receive(int conn_id, void *buf, size_t len);
+int network_disconnect(int conn_id);
 
 #endif //BROTHER_NETWORK_H
