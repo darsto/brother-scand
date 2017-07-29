@@ -160,6 +160,11 @@ device_handler_add_device(struct device_handler *handler, const char *ip)
 
     dev->conn = conn;
     dev->ip = strdup(ip);
+    dev->channel = data_channel_create(dev->ip, DATA_PORT);
+    if (dev->channel == NULL) {
+        fprintf(stderr, "Fatal: failed to create data_channel for device %s.\n", dev->ip);
+        return NULL;
+    }
 
     TAILQ_INSERT_TAIL(&handler->devices, dev, tailq);
     return dev;
@@ -233,16 +238,7 @@ device_handler_loop(void *arg)
             continue;
         }
 
-        if (dev->channel) {
-            fprintf(stderr, "WARN: data_channel has already been created for device at %s.\n", dev->ip);
-            continue;
-        }
-
-        dev->channel = data_channel_create(dev->ip, DATA_PORT);
-        if (dev->channel == NULL) {
-            fprintf(stderr, "Fatal: failed to create data_channel for device %s.\n", dev->ip);
-            continue;
-        }
+        data_channel_kick(dev->channel);
     }
     
     sleep(1);

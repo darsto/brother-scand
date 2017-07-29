@@ -8,5 +8,6 @@
 #define BROTHER_DATA_CHANNEL_H
 
 struct data_channel *data_channel_create(const char *dest_ip, uint16_t port);
+void data_channel_kick(struct data_channel *data_channel);
 
 #endif //BROTHER_DATA_CHANNEL_H

@@ -40,6 +40,7 @@ struct data_channel {
     } page_data;
 
     int scanned_pages;
+    struct event_thread *thread;
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
     uint8_t buf[2048];
@@ -157,8 +158,9 @@ receive_data_footer(struct data_channel *data_channel)
 
     memcpy(msg, data_channel->buf, sizeof(msg));
     // 10 bytes of data, usually:
-    // 8207 0001 0084 0000 0000
-    // still unknown
+    // 8207 (probably magic number)
+    // 0001 (id of just scanned page - starting with 1)
+    // 0084 0000 0000 (unknown - seem constant)
 
     data_channel->process_cb = receive_initial_data;
     return;
@@ -283,6 +285,13 @@ data_channel_reset_page_data(struct data_channel *data_channel)
 }
 
 static void
+set_paused(struct data_channel *data_channel)
+{
+    event_thread_pause(data_channel->thread);
+    sleep(1);
+}
+
+static void
 receive_initial_data(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0, rc;
@@ -296,7 +305,8 @@ receive_initial_data(struct data_channel *data_channel)
 
     if (retries == 300 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
         /* no more documents to scan */
-        exit(0); // TODO exit gracefully
+        data_channel->process_cb = set_paused;
+        return;
     }
 
     data_channel_reset_page_data(data_channel);
@@ -550,13 +560,13 @@ data_channel_stop(void *arg)
 }
 
 static void
-init_data_channel(struct data_channel *data_channel, int conn)
+init_data_channel(struct data_channel *data_channel)
 {
     struct data_channel_param *param;
     int i = 0;
 
-    data_channel->conn = conn;
-    data_channel->process_cb = init_connection;
+    data_channel->thread = event_thread_self();
+    data_channel->process_cb = set_paused;
 
 #define DATA_CH_PARAM(ID, VAL) \
     param = &data_channel->params[i++]; \
@@ -578,6 +588,41 @@ init_data_channel(struct data_channel *data_channel, int conn)
     DATA_CH_PARAM('L', "128");
 
 #undef DATA_CH_PARAM
+}
+
+void
+data_channel_kick_cb(void *arg1, void *arg2)
+{
+    struct data_channel *data_channel = arg1;
+
+    if (data_channel->process_cb != set_paused) {
+        fprintf(stderr, "Trying to kick non-sleeping data_channel %d.\n", data_channel->conn);
+        return;
+    }
+
+    data_channel->process_cb = init_connection;
+}
+
+void
+data_channel_kick(struct data_channel *data_channel)
+{
+    struct event_thread *thread = data_channel->thread;
+    int rc;
+
+    rc = event_thread_enqueue_event(thread, data_channel_kick_cb, data_channel, NULL);
+    if (rc != 0) {
+        goto err;
+    }
+
+    rc = event_thread_kick(thread);
+    if (rc != 0) {
+        goto err;
+    }
+
+    return;
+
+err:
+    fprintf(stderr, "Failed to kick data_channel %d.\n", data_channel->conn);
 }
 
 struct data_channel *
@@ -607,7 +652,8 @@ data_channel_create(const char *dest_ip, uint16_t port)
         return NULL;
     }
 
-    init_data_channel(data_channel, conn);
+    data_channel->conn = conn;
+    data_channel->process_cb = init_data_channel;
 
     thread = event_thread_create("data_channel", data_channel_loop, data_channel_stop, data_channel);
     if (thread == NULL) {
@@ -618,5 +664,6 @@ data_channel_create(const char *dest_ip, uint16_t port)
         return NULL;
     }
 
+    data_channel->thread = thread;
     return data_channel;
 }
