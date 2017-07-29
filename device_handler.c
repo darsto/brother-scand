@@ -34,6 +34,7 @@ struct device {
     int conn;
     struct data_channel *channel;
     const char *ip;
+    int status;
     time_t next_register_time;
     TAILQ_ENTRY(device) tailq;
 };
@@ -200,20 +201,24 @@ device_handler_loop(void *arg)
     struct device_handler *handler = arg;
     struct device *dev;
     time_t time_now;
-    int msg_len, status;
+    int msg_len;
 
     TAILQ_FOREACH(dev, &handler->devices, tailq) {
         time_now = time(NULL);
         if (difftime(time_now, dev->next_register_time) > 0) {
             /* only register once per DEVICE_REGISTER_DURATION_SEC */
             dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
-            status = get_scanner_status(dev->conn);
-            if (status == 0) {
+            dev->status = get_scanner_status(dev->conn);
+            if (dev->status == 0) {
                 register_scanner_host(dev->conn);
             } else {
                 fprintf(stderr, "Warn: device at %s is currently unreachable.\n", dev->ip);
                 continue;
             }
+        }
+
+        if (dev->status != 0) {
+            continue;
         }
 
         /* try to receive scan event */
