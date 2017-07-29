@@ -418,7 +418,7 @@ exchange_params2(struct data_channel *data_channel)
         goto err;
     }
 
-    data_channel->process_cb = receive_data;
+    data_channel->process_cb = receive_initial_data;
     return;
 
 err:
