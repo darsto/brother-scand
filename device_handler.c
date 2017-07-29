@@ -22,6 +22,7 @@
 #define DATA_PORT 54921
 #define DEVICE_HANDLER_PORT 49976
 #define DEVICE_REGISTER_DURATION_SEC 360
+#define DEVICE_KEEPALIVE_DURATION_SEC 5
 #define BUTTON_HANDLER_PORT 54925
 #define SNMP_PORT 161
 
@@ -36,6 +37,7 @@ struct device {
     struct data_channel *channel;
     const char *ip;
     int status;
+    time_t next_ping_time;
     time_t next_register_time;
     TAILQ_ENTRY(device) tailq;
 };
@@ -221,20 +223,24 @@ device_handler_loop(void *arg)
 
     TAILQ_FOREACH(dev, &handler->devices, tailq) {
         time_now = time(NULL);
-        if (difftime(time_now, dev->next_register_time) > 0) {
-            /* only register once per DEVICE_REGISTER_DURATION_SEC */
-            dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
+
+        if (difftime(time_now, dev->next_ping_time) > 0) {
+            /* only ping once per DEVICE_KEEPALIVE_DURATION_SEC */
+            dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
             dev->status = get_scanner_status(dev->conn);
-            if (dev->status == 0) {
-                register_scanner_host(dev->conn);
-            } else {
+            if (dev->status != 0) {
                 fprintf(stderr, "Warn: device at %s is currently unreachable.\n", dev->ip);
-                continue;
             }
         }
 
         if (dev->status != 0) {
             continue;
+        }
+
+        if (difftime(time_now, dev->next_register_time) > 0) {
+            /* only register once per DEVICE_REGISTER_DURATION_SEC */
+            dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
+            register_scanner_host(dev->conn);
         }
 
         /* try to receive scan event */
