@@ -140,33 +140,24 @@ device_handler_add_device(struct device_handler *handler, const char *ip)
     struct device *dev;
     int conn, button_conn, rc;
 
-    conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), false);
+    conn = network_udp_init_conn(htons(DEVICE_HANDLER_PORT), inet_addr(ip), htons(SNMP_PORT));
     if (conn < 0) {
-        fprintf(stderr, "Could not setup connection for device at %s.\n", ip);
-        return NULL;
-    }
-
-    rc = network_udp_connect(conn, inet_addr(ip), htons(SNMP_PORT));
-    if (rc != 0) {
         fprintf(stderr, "Could not connect to device at %s.\n", ip);
-        network_udp_free(conn);
         return NULL;
     }
 
-    button_conn = network_udp_init_conn(htons(BUTTON_HANDLER_PORT), true);
+    button_conn = network_udp_init_conn(htons(BUTTON_HANDLER_PORT), 0, 0);
     if (conn < 0) {
-        fprintf(stderr, "Fatal: could not setup button handler connection at %s.\n", ip);
+        fprintf(stderr, "Could not setup button handler connection at %s.\n", ip);
         network_udp_disconnect(conn);
-        network_udp_free(conn);
         return NULL;
     }
 
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
         fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
-        network_udp_free(button_conn);
+        network_udp_disconnect(button_conn);
         network_udp_disconnect(conn);
-        network_udp_free(conn);
         return NULL;
     }
 
@@ -175,7 +166,7 @@ device_handler_add_device(struct device_handler *handler, const char *ip)
     dev->ip = strdup(ip);
     dev->channel = data_channel_create(dev->ip, DATA_PORT);
     if (dev->channel == NULL) {
-        fprintf(stderr, "Fatal: failed to create data_channel for device %s.\n", dev->ip);
+        fprintf(stderr, "Failed to create data_channel for device %s.\n", dev->ip);
         return NULL;
     }
 

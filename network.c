@@ -18,16 +18,9 @@
 #define MAX_NETWORK_CONNECTIONS 32
 #define CONNECTION_TIMEOUT_SEC 3
 
-enum network_conn_state {
-    NETWORK_CONN_STATE_UNITIALIZED = 0,
-    NETWORK_CONN_STATE_DISCONNECTED,
-    NETWORK_CONN_STATE_CONNECTED,
-};
-
 struct network_conn {
     int fd;
-    bool server;
-    enum network_conn_state state;
+    bool connected;
     struct sockaddr_in sin_me;
     struct sockaddr_in sin_oth;
     socklen_t slen;
@@ -48,66 +41,93 @@ get_network_conn(int conn_id)
     return conn;
 }
 
-int
-network_udp_init_conn(in_port_t port, bool server)
+static int
+create_socket(void)
 {
-    int conn_id;
-    struct network_conn *conn;
     struct timeval timeout;
+    int fd, one = 1;
 
-    conn_id = atomic_fetch_add(&g_conn_count, 1);
-    conn = &g_conns[conn_id];
-    assert(conn->state == NETWORK_CONN_STATE_UNITIALIZED);
-    
-    conn->fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    if (conn->fd == -1) {
+    fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (fd == -1) {
         perror("socket");
         return -1;
     }
 
-    conn->server = server;
-    
     timeout.tv_sec = CONNECTION_TIMEOUT_SEC;
     timeout.tv_usec = 0;
 
-    if (setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
+    if (setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
         perror("setsockopt recv");
     }
 
-    if (setsockopt(conn->fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
+    if (setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
         perror("setsockopt send");
+    }
+
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) != 0) {
+        perror("setsockopt");
+    }
+
+    return fd;
+}
+
+static int
+init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port)
+{
+    conn->fd = create_socket();
+    if (conn->fd == -1) {
+        return -1;
     }
 
     conn->sin_me.sin_family = AF_INET;
     conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
-    conn->sin_me.sin_port = port;
+    conn->sin_me.sin_port = local_port;
 
-    if (port > 0 && bind(conn->fd, (struct sockaddr *) &conn->sin_me, sizeof(conn->sin_me)) == -1) {
+    if (bind(conn->fd, (struct sockaddr *) &conn->sin_me, sizeof(conn->sin_me)) != 0) {
         perror("bind");
         close(conn->fd);
         return -1;
     }
-    
-    conn->state = NETWORK_CONN_STATE_DISCONNECTED;
-    return conn_id;
+
+    /* destination init */
+    conn->sin_oth.sin_addr.s_addr = dest_addr;
+    conn->sin_oth.sin_family = AF_INET;
+    conn->sin_oth.sin_port = dest_port;
+
+    conn->slen = sizeof(conn->sin_oth);
+    return 0;
 }
 
 int
-network_udp_connect(int conn_id, in_addr_t addr, in_port_t port)
+network_udp_init_conn(in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port)
 {
+    int conn_id;
     struct network_conn *conn;
 
-    conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_DISCONNECTED);
-
-    conn->sin_oth.sin_addr.s_addr = addr;
-    conn->sin_oth.sin_family = AF_INET;
-    conn->sin_oth.sin_port = port;
+    conn_id = atomic_fetch_add(&g_conn_count, 1);
+    conn = &g_conns[conn_id];
+    assert(!conn->connected);
     
+    conn->fd = create_socket();
+
+    conn->sin_me.sin_family = AF_INET;
+    conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
+    conn->sin_me.sin_port = local_port;
+
+    if (local_port > 0 && bind(conn->fd, (struct sockaddr *) &conn->sin_me, sizeof(conn->sin_me)) == -1) {
+        perror("bind");
+        close(conn->fd);
+        return -1;
+    }
+
+    conn->sin_oth.sin_addr.s_addr = dest_addr;
+    conn->sin_oth.sin_family = AF_INET;
+    conn->sin_oth.sin_port = dest_port;
+
     conn->slen = sizeof(conn->sin_oth);
 
-    conn->state = NETWORK_CONN_STATE_CONNECTED;
-    return 0;
+    conn->connected = true;
+    return conn_id;
 }
 
 int
@@ -118,7 +138,7 @@ network_udp_send(int conn_id, const void *buf, size_t len)
     char hexdump_line[64];
 
     conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
+    assert(conn->connected);
     
     sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth, conn->slen);
     if (sent_bytes < 0) {
@@ -142,8 +162,7 @@ network_udp_receive(int conn_id, void *buf, size_t len)
     int rc;
     
     conn = get_network_conn(conn_id);
-    assert((conn->server && conn->state != NETWORK_CONN_STATE_UNITIALIZED) ||
-           (!conn->server && conn->state == NETWORK_CONN_STATE_CONNECTED));
+    assert(conn->connected);
 
     slen = sizeof(sin_oth_tmp);
     recv_bytes = recvfrom(conn->fd, buf, len, 0, (struct sockaddr *) &sin_oth_tmp, &slen);
@@ -158,8 +177,8 @@ network_udp_receive(int conn_id, void *buf, size_t len)
     snprintf(hexdump_line, sizeof(hexdump_line), "received %zd bytes from %d", recv_bytes, ntohs(sin_oth_tmp.sin_port));
     hexdump(hexdump_line, buf, recv_bytes);
     
-    if (conn->server && conn->state == NETWORK_CONN_STATE_DISCONNECTED) {
-        network_udp_connect(conn_id, sin_oth_tmp.sin_addr.s_addr, sin_oth_tmp.sin_port);
+    if (conn->sin_oth.sin_addr.s_addr == 0) {
+        memcpy(&conn->sin_oth, &sin_oth_tmp, sizeof(conn->sin_oth));
     }
     
     return (int) recv_bytes;
@@ -171,98 +190,35 @@ network_udp_disconnect(int conn_id)
     struct network_conn *conn;
 
     conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_CONNECTED ||
-           (conn->server && conn->state == NETWORK_CONN_STATE_DISCONNECTED));
-    
-    /* dummy function */
-    
-    conn->state = NETWORK_CONN_STATE_DISCONNECTED;
-    return 0;
-}
-
-int
-network_udp_free(int conn_id)
-{
-    struct network_conn *conn;
-
-    conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_DISCONNECTED);
+    assert(conn->connected);
 
     close(conn->fd);
-    conn->state = NETWORK_CONN_STATE_UNITIALIZED;
+    conn->connected = false;
     return 0;
 }
 
 int
-network_tcp_init_conn(in_port_t port, bool server)
+network_tcp_init_conn(in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port)
 {
     int conn_id;
     struct network_conn *conn;
-    struct timeval timeout;
-    int one = 1;
 
     conn_id = atomic_fetch_add(&g_conn_count, 1);
     conn = &g_conns[conn_id];
-    assert(conn->state == NETWORK_CONN_STATE_UNITIALIZED);
+    assert(!conn->connected);
 
-    conn->fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
-    if (conn->fd == -1) {
-        perror("socket");
+    if (init_conn(conn, local_port, dest_addr, dest_port) != 0) {
         return -1;
     }
 
-    conn->server = false; /* server not supported yet */
-
-    timeout.tv_sec = CONNECTION_TIMEOUT_SEC;
-    timeout.tv_usec = 0;
-
-    if (setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
-        perror("setsockopt recv");
-    }
-
-    if (setsockopt(conn->fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
-        perror("setsockopt send");
-    }
-
-    if (setsockopt(conn->fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) != 0) {
-        perror("setsockopt");
-    }
-    
-    conn->sin_me.sin_family = AF_INET;
-    conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
-    conn->sin_me.sin_port = port;
-
-    if (port > 0 && bind(conn->fd, (struct sockaddr *) &conn->sin_me, sizeof(conn->sin_me)) != 0) {
-        perror("bind");
+    if (connect(conn->fd , (struct sockaddr *)&conn->sin_oth , conn->slen) != 0) {
+        perror("connect");
         close(conn->fd);
         return -1;
     }
 
-    conn->state = NETWORK_CONN_STATE_DISCONNECTED;
+    conn->connected = true;
     return conn_id;
-}
-
-int
-network_tcp_connect(int conn_id, in_addr_t addr, in_port_t port)
-{
-    struct network_conn *conn;
-
-    conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_DISCONNECTED);
-
-    conn->sin_oth.sin_addr.s_addr = addr;
-    conn->sin_oth.sin_family = AF_INET;
-    conn->sin_oth.sin_port = port;
-
-    conn->slen = sizeof(conn->sin_oth);
-
-    if (connect(conn->fd , (struct sockaddr *)&conn->sin_oth , conn->slen) != 0) {
-        perror("connect");
-        return -1;
-    }
-    
-    conn->state = NETWORK_CONN_STATE_CONNECTED;
-    return 0;
 }
 
 int
@@ -273,7 +229,7 @@ network_tcp_send(int conn_id, const void *buf, size_t len)
     char hexdump_line[64];
     
     conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
+    assert(conn->connected);
 
     sent_bytes = send(conn->fd, buf, len, 0);
     if (sent_bytes < 0) {
@@ -295,7 +251,7 @@ network_tcp_receive(int conn_id, void *buf, size_t len)
     int rc;
 
     conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
+    assert(conn->connected);
 
     recv_bytes = recv(conn->fd, buf, len, 0);
     rc = errno;
@@ -318,21 +274,9 @@ network_tcp_disconnect(int conn_id)
     struct network_conn *conn;
 
     conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_CONNECTED);
+    assert(conn->connected);
 
     close(conn->fd);
-    conn->state = NETWORK_CONN_STATE_DISCONNECTED;
-    return 0;
-}
-
-int
-network_tcp_free(int conn_id)
-{
-    struct network_conn *conn;
-
-    conn = get_network_conn(conn_id);
-    assert(conn->state == NETWORK_CONN_STATE_DISCONNECTED);
-
-    conn->state = NETWORK_CONN_STATE_UNITIALIZED;
+    conn->connected = false;
     return 0;
 }
