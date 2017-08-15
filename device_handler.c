@@ -121,7 +121,8 @@ device_handler_loop(void *arg)
 {
     struct device *dev;
     time_t time_now;
-    int msg_len;
+    char client_ip[16];
+    int msg_len, rc;
 
     TAILQ_FOREACH(dev, &g_config.devices, tailq) {
         time_now = time(NULL);
@@ -144,22 +145,36 @@ device_handler_loop(void *arg)
             dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
             register_scanner_host(dev->conn);
         }
-
-        /* try to receive scan event */
-        msg_len = network_receive(g_dev_handler.button_conn, g_buf, sizeof(g_buf));
-        if (msg_len < 0) {
-            continue;
-        }
-
-        msg_len = network_send(g_dev_handler.button_conn, g_buf, msg_len);
-        if (msg_len < 0) {
-            perror("sendto");
-            continue;
-        }
-
-        data_channel_kick(dev->channel);
     }
 
+    /* try to receive scan event */
+    msg_len = network_receive(g_dev_handler.button_conn, g_buf, sizeof(g_buf));
+    if (msg_len < 0) {
+        goto out;
+    }
+
+    rc = network_get_client_ip(g_dev_handler.button_conn, client_ip);
+    if (rc < 0) {
+        fprintf(stderr, "Warn: Couldn't stringify IP address we just received message from.\n");
+        goto out;
+    }
+
+    TAILQ_FOREACH(dev, &g_config.devices, tailq) {
+        if (strncmp(dev->ip, client_ip, 16) == 0) {
+            msg_len = network_send(g_dev_handler.button_conn, g_buf, msg_len);
+            if (msg_len < 0) {
+                perror("sendto");
+                goto out;
+            }
+
+            data_channel_kick(dev->channel);
+            goto out;
+        }
+    }
+
+    fprintf(stderr, "Warn: Received scan button event from unknown device %s.\n", client_ip);
+
+out:
     sleep(1);
 }
 
