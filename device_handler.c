@@ -30,7 +30,6 @@ static uint8_t g_buf[1024];
 static int
 register_scanner_host(int conn)
 {
-    const char *host_name = "darsto-br1";
     const char *scan_func[4] = { "IMAGE", "OCR", "FILE", "EMAIL" };
     char msg[4][256];
     const char *functions[4];
@@ -46,7 +45,7 @@ register_scanner_host(int conn)
                           "APPNUM=1;"
                           "DURATION=%d;"
                           "CC=1;",
-                      host_name,
+                      g_config.hostname,
                       scan_func[i],
                       g_config.local_ip,
                       BUTTON_HANDLER_PORT,

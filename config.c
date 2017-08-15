@@ -61,7 +61,7 @@ config_init(const char *config_path)
     FILE* config;
     struct device *dev;
     char buf[1024];
-    char ip[256];
+    char variable[256];
     int rc = -1;
 
     TAILQ_INIT(&g_config.devices);
@@ -70,6 +70,8 @@ config_init(const char *config_path)
         return -1;
     }
 
+    strcpy(g_config.hostname, "brother-open");
+
     config = fopen(config_path, "r");
     if (config == NULL) {
         fprintf(stderr, "Could not open config file '%s'.\n", config_path);
@@ -77,10 +79,12 @@ config_init(const char *config_path)
     }
 
     while (fgets((char *) buf, sizeof(buf), config)) {
-        if (sscanf((char *) buf, "ip %64s", ip) == 1) {
-            dev = device_handler_add_device(ip);
+        if (sscanf((char *) buf, "hostname %15s", variable) == 1) {
+            memcpy(g_config.hostname, variable, sizeof(g_config.hostname));
+        } else if (sscanf((char *) buf, "ip %64s", variable) == 1) {
+            dev = device_handler_add_device(variable);
             if (dev == NULL) {
-                fprintf(stderr, "Fatal: could not load device '%s'.\n", ip);
+                fprintf(stderr, "Fatal: could not load device '%s'.\n", variable);
                 goto out;
             }
         }

@@ -9,6 +9,8 @@
 
 #include <sys/queue.h>
 
+#define BROTHER_HOSTNAME_LENGTH 16
+
 struct device {
     uint8_t buf[1024];
     int conn;
@@ -22,6 +24,7 @@ struct device {
 };
 
 struct brother_config {
+    char hostname[BROTHER_HOSTNAME_LENGTH];
     char local_ip[16];
     TAILQ_HEAD(, device) devices;
 };
