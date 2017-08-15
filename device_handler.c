@@ -25,6 +25,12 @@
 #define BUTTON_HANDLER_PORT 54925
 #define SNMP_PORT 161
 
+struct device_handler {
+    int button_conn;
+    struct event_thread *thread;
+};
+
+static struct device_handler g_dev_handler;
 static uint8_t g_buf[1024];
 
 static int
@@ -65,31 +71,23 @@ struct device *
 device_handler_add_device(const char *ip)
 {
     struct device *dev;
-    int conn, button_conn;
+    int conn;
 
-    conn = network_init_conn(NETWORK_TYPE_UDP, htons(DEVICE_HANDLER_PORT), inet_addr(ip), htons(SNMP_PORT));
+    conn = network_init_conn(NETWORK_TYPE_UDP, htons(DEVICE_HANDLER_PORT),
+                             inet_addr(ip), htons(SNMP_PORT));
     if (conn < 0) {
         fprintf(stderr, "Could not connect to device at %s.\n", ip);
-        return NULL;
-    }
-
-    button_conn = network_init_conn(NETWORK_TYPE_UDP, htons(BUTTON_HANDLER_PORT), 0, 0);
-    if (conn < 0) {
-        fprintf(stderr, "Could not setup button handler connection at %s.\n", ip);
-        network_disconnect(conn);
         return NULL;
     }
 
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
         fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
-        network_disconnect(button_conn);
         network_disconnect(conn);
         return NULL;
     }
 
     dev->conn = conn;
-    dev->button_conn = button_conn;
     dev->ip = strdup(ip);
     dev->channel = data_channel_create(dev->ip, DATA_PORT);
     if (dev->channel == NULL) {
@@ -131,12 +129,12 @@ device_handler_loop(void *arg)
         }
 
         /* try to receive scan event */
-        msg_len = network_receive(dev->button_conn, dev->buf, sizeof(dev->buf));
+        msg_len = network_receive(g_dev_handler.button_conn, dev->buf, sizeof(dev->buf));
         if (msg_len < 0) {
             continue;
         }
 
-        msg_len = network_send(dev->button_conn, dev->buf, msg_len);
+        msg_len = network_send(g_dev_handler.button_conn, dev->buf, msg_len);
         if (msg_len < 0) {
             perror("sendto");
             continue;
@@ -162,16 +160,22 @@ device_handler_stop(void *arg)
 void
 device_handler_init(const char *config_path)
 {
-    struct event_thread *thread;
-
     if (config_init(config_path) != 0) {
         fprintf(stderr, "Fatal: could not init config.\n");
         return;
     }
 
-    thread = event_thread_create("device_handler", device_handler_loop, device_handler_stop, NULL);
-    if (thread == NULL) {
+    g_dev_handler.button_conn = network_init_conn(NETWORK_TYPE_UDP, htons(BUTTON_HANDLER_PORT),
+                                                  0, 0);
+    if (g_dev_handler.button_conn < 0) {
+        fprintf(stderr, "Fatal: Could not setup button handler connection at %s.\n", g_config.local_ip);
+        return;
+    }
+
+    g_dev_handler.thread = event_thread_create("device_handler", device_handler_loop, device_handler_stop, NULL);
+    if (g_dev_handler.thread == NULL) {
         fprintf(stderr, "Fatal: could not init device_handler thread.\n");
+        network_disconnect(g_dev_handler.button_conn);
         return;
     }
 }
