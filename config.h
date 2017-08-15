@@ -12,7 +12,6 @@
 #define BROTHER_HOSTNAME_LENGTH 16
 
 struct device {
-    uint8_t buf[1024];
     int conn;
     struct data_channel *channel;
     const char *ip;

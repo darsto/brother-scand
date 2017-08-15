@@ -144,12 +144,12 @@ device_handler_loop(void *arg)
         }
 
         /* try to receive scan event */
-        msg_len = network_receive(g_dev_handler.button_conn, dev->buf, sizeof(dev->buf));
+        msg_len = network_receive(g_dev_handler.button_conn, g_buf, sizeof(g_buf));
         if (msg_len < 0) {
             continue;
         }
 
-        msg_len = network_send(g_dev_handler.button_conn, dev->buf, msg_len);
+        msg_len = network_send(g_dev_handler.button_conn, g_buf, msg_len);
         if (msg_len < 0) {
             perror("sendto");
             continue;
