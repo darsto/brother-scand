@@ -16,7 +16,7 @@ set(SOURCE_FILES
         log.h log.c
         device_handler.h device_handler.c
         event_thread.c event_thread.h
-        iputils.c iputils.h 
+        config.c config.h
         network.c network.h
         data_channel.c data_channel.h
         snmp.c snmp.h)

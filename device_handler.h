@@ -8,5 +8,6 @@
 #define DCP_J105_DEVICE_HANDLER_H
 
 void device_handler_init(const char *config_path);
+struct device *device_handler_add_device(const char *ip);
 
 #endif //DCP_J105_DEVICE_HANDLER_H

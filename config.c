@@ -10,10 +10,11 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include "iputils.h"
+#include "config.h"
+#include "device_handler.h"
 
-int
-iputils_get_local_ip(char *buffer)
+static int
+load_local_ip(void)
 {
     struct sockaddr_in serv;
     int rc = -1;
@@ -41,7 +42,7 @@ iputils_get_local_ip(char *buffer)
         goto out;
     }
 
-    const char *ret = inet_ntop(AF_INET, &name.sin_addr, buffer, 16);
+    const char *ret = inet_ntop(AF_INET, &name.sin_addr, g_config.local_ip, sizeof(g_config.local_ip));
 
     if (ret) {
         rc = 0;
@@ -51,5 +52,42 @@ iputils_get_local_ip(char *buffer)
     
 out:
     close(sock);
+    return rc;
+}
+
+int
+config_init(const char *config_path)
+{
+    FILE* config;
+    struct device *dev;
+    char buf[1024];
+    char ip[256];
+    int rc = -1;
+
+    TAILQ_INIT(&g_config.devices);
+    if (load_local_ip() != 0) {
+        fprintf(stderr, "Fatal: could not get local ip address.\n");
+        return -1;
+    }
+
+    config = fopen(config_path, "r");
+    if (config == NULL) {
+        fprintf(stderr, "Could not open config file '%s'.\n", config_path);
+        abort();
+    }
+
+    while (fgets((char *) buf, sizeof(buf), config)) {
+        if (sscanf((char *) buf, "ip %64s", ip) == 1) {
+            dev = device_handler_add_device(ip);
+            if (dev == NULL) {
+                fprintf(stderr, "Fatal: could not load device '%s'.\n", ip);
+                goto out;
+            }
+        }
+    }
+
+    rc = 0;
+out:
+    fclose(config);
     return rc;
 }
