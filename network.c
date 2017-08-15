@@ -12,6 +12,7 @@
 #include <stdbool.h>
 #include <memory.h>
 #include <errno.h>
+#include <arpa/inet.h>
 #include "network.h"
 #include "log.h"
 
@@ -214,6 +215,19 @@ network_receive(int conn_id, void *buf, size_t len)
 
     return (int) recv_bytes;
 }
+
+int
+network_get_client_ip(int conn_id, char ip[16])
+{
+    struct network_conn *conn;
+    const char *ret;
+
+    conn = get_network_conn(conn_id);
+
+    ret = inet_ntop(AF_INET, &conn->sin_oth.sin_addr, ip, 16);
+    return ret != NULL ? 0 : -1;
+}
+
 
 int
 network_disconnect(int conn_id)

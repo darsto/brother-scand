@@ -18,6 +18,7 @@ int network_init_conn(enum network_type type, in_port_t local_port, in_addr_t de
 int network_reconnect(int conn_id);
 int network_send(int conn_id, const void *buf, size_t len);
 int network_receive(int conn_id, void *buf, size_t len);
+int network_get_client_ip(int conn_id, char ip[16]);
 int network_disconnect(int conn_id);
 
 #endif //BROTHER_NETWORK_H
