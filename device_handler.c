@@ -71,7 +71,7 @@ struct device *
 device_handler_add_device(const char *ip)
 {
     struct device *dev;
-    int conn;
+    int conn, status, i;
 
     conn = network_init_conn(NETWORK_TYPE_UDP, htons(DEVICE_HANDLER_PORT),
                              inet_addr(ip), htons(SNMP_PORT));
@@ -83,6 +83,21 @@ device_handler_add_device(const char *ip)
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
         fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
+        network_disconnect(conn);
+        return NULL;
+    }
+
+    for (i = 0; i < 3; ++i) {
+        status = snmp_get_printer_status(conn, g_buf, sizeof(g_buf));
+        if (status == 10001) {
+            break;
+        }
+
+        fprintf(stderr, "Warn: device at %s is currently unreachable. Retry %d/3.\n", ip, i + 1);
+    }
+
+    if (i == 3) {
+        fprintf(stderr, "Error: device at %s is unreachable.\n", ip);
         network_disconnect(conn);
         return NULL;
     }
