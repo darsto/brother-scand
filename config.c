@@ -84,8 +84,7 @@ config_init(const char *config_path)
         } else if (sscanf((char *) buf, "ip %64s", variable) == 1) {
             dev = device_handler_add_device(variable);
             if (dev == NULL) {
-                fprintf(stderr, "Fatal: could not load device '%s'.\n", variable);
-                goto out;
+                fprintf(stderr, "Error: could not load device '%s'.\n", variable);
             }
         }
     }
