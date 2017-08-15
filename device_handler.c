@@ -63,7 +63,7 @@ get_scanner_status(int conn)
     msg_header.pdu_type = SNMP_DATA_T_PDU_GET_REQUEST;
     msg_header.request_id = 0;
 
-    varbind.oid = g_brInfoPrinterUStatusOID;
+    memcpy(varbind.oid, g_brInfoPrinterUStatusOID, sizeof(g_brInfoPrinterUStatusOID));
     varbind.value_type = SNMP_DATA_T_NULL;
 
     out = snmp_encode_msg(g_buf_end, &msg_header, 1, &varbind);
@@ -109,7 +109,7 @@ register_scanner_host(int conn)
                  "TYPE=BR;BUTTON=SCAN;USER=\"%s\";FUNC=%s;HOST=%s:%d;APPNUM=1;DURATION=%d;CC=1;",
                  host_name, scan_func[i], g_local_ip, BUTTON_HANDLER_PORT, DEVICE_REGISTER_DURATION_SEC);
         
-        varbind[i].oid = g_brRegisterKeyInfoOID;
+        memcpy(varbind[i].oid, g_brRegisterKeyInfoOID, sizeof(g_brRegisterKeyInfoOID));
         varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
         varbind[i].value.s = msg[i];
     }
