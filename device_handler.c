@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <memory.h>
+#include <stdatomic.h>
 #include "device_handler.h"
 #include "event_thread.h"
 #include "config.h"
@@ -30,6 +31,7 @@ struct device_handler {
     struct event_thread *thread;
 };
 
+static atomic_int g_appnum;
 static struct device_handler g_dev_handler;
 static uint8_t g_buf[1024];
 
@@ -48,13 +50,13 @@ register_scanner_host(int conn)
                           "USER=\"%s\";"
                           "FUNC=%s;"
                           "HOST=%s:%d;"
-                          "APPNUM=1;"
+                          "APPNUM=%d;"
                           "DURATION=%d;"
                           "CC=1;",
                       g_config.hostname,
                       scan_func[i],
-                      g_config.local_ip,
-                      BUTTON_HANDLER_PORT,
+                      g_config.local_ip, BUTTON_HANDLER_PORT,
+                      atomic_fetch_add(&g_appnum, 1),
                       DEVICE_REGISTER_DURATION_SEC);
 
         if (rc < 0 || rc == sizeof(msg[i])) {
@@ -175,6 +177,8 @@ device_handler_stop(void *arg)
 void
 device_handler_init(const char *config_path)
 {
+    atomic_store(&g_appnum, 1);
+
     if (config_init(config_path) != 0) {
         fprintf(stderr, "Fatal: could not init config.\n");
         return;
