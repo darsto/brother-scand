@@ -22,6 +22,7 @@ struct network_conn {
     int fd;
     enum network_type type;
     bool connected;
+    bool dynamic_client;
     struct sockaddr_in sin_me;
     struct sockaddr_in sin_oth;
 };
@@ -91,6 +92,10 @@ init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr, 
         perror("bind");
         close(conn->fd);
         return -1;
+    }
+
+    if (dest_addr == 0) {
+        conn->dynamic_client = true;
     }
 
     conn->sin_oth.sin_addr.s_addr = dest_addr;
@@ -200,7 +205,7 @@ network_receive(int conn_id, void *buf, size_t len)
         return -1;
     }
 
-    if (conn->type == NETWORK_TYPE_UDP && conn->sin_oth.sin_addr.s_addr == 0) {
+    if (conn->type == NETWORK_TYPE_UDP && conn->dynamic_client) {
         memcpy(&conn->sin_oth, &sin_oth_tmp, sizeof(conn->sin_oth));
     }
 
