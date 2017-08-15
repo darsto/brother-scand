@@ -15,9 +15,9 @@
 #include "device_handler.h"
 #include "event_thread.h"
 #include "iputils.h"
-#include "ber/snmp.h"
 #include "network.h"
 #include "data_channel.h"
+#include "snmp.h"
 
 #define DATA_PORT 54921
 #define DEVICE_HANDLER_PORT 49976
@@ -46,92 +46,39 @@ struct device_handler {
     TAILQ_HEAD(, device) devices;
 };
 
-static uint32_t g_brInfoPrinterUStatusOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
-static uint32_t g_brRegisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 1, 0, SNMP_MSG_OID_END };
-
-static int
-get_scanner_status(int conn)
-{
-    struct snmp_msg_header msg_header = {0};
-    struct snmp_varbind varbind = {0};
-    int msg_len;
-    uint8_t *out;
-    int rc = -1;
-
-    msg_header.snmp_ver = 0;
-    msg_header.community = "public";
-    msg_header.pdu_type = SNMP_DATA_T_PDU_GET_REQUEST;
-    msg_header.request_id = 0;
-
-    memcpy(varbind.oid, g_brInfoPrinterUStatusOID, sizeof(g_brInfoPrinterUStatusOID));
-    varbind.value_type = SNMP_DATA_T_NULL;
-
-    out = snmp_encode_msg(g_buf_end, &msg_header, 1, &varbind);
-    msg_len = (int) (g_buf_end - out + 1);
-
-    msg_len = network_send(conn, out, msg_len) != 0;
-    if (msg_len < 0) {
-        perror("sendto");
-        goto out;
-    }
-    
-    msg_len = network_receive(conn, g_buf, 1024);
-    if (msg_len < 0) {
-        perror("recvfrom");
-        goto out;
-    }
-    
-    rc = 0;
-out:
-    return rc;
-}
-
 static int
 register_scanner_host(int conn)
 {
-    struct snmp_msg_header msg_header = {0};
-    struct snmp_varbind varbind[3] = {0};
-    int msg_len;
-    uint8_t *out;
-    char msg[3][768];
-    int i, rc = -1;
-    
     const char *host_name = "darsto-br1";
-    const char *scan_func[3] = { "IMAGE", "SCAN", "FILE" };
-    
-    msg_header.snmp_ver = 0;
-    msg_header.community = "internal";
-    msg_header.pdu_type = SNMP_DATA_T_PDU_SET_REQUEST;
-    msg_header.request_id = 0;
+    const char *scan_func[4] = { "IMAGE", "OCR", "FILE", "EMAIL" };
+    char msg[4][256];
+    const char *functions[4];
+    int i, rc;
 
-    for (i = 0; i < 3; ++i) {
-        snprintf(msg[i], sizeof(msg[i]),
-                 "TYPE=BR;BUTTON=SCAN;USER=\"%s\";FUNC=%s;HOST=%s:%d;APPNUM=1;DURATION=%d;CC=1;",
-                 host_name, scan_func[i], g_local_ip, BUTTON_HANDLER_PORT, DEVICE_REGISTER_DURATION_SEC);
-        
-        memcpy(varbind[i].oid, g_brRegisterKeyInfoOID, sizeof(g_brRegisterKeyInfoOID));
-        varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
-        varbind[i].value.s = msg[i];
+    for (i = 0; i < 4; ++i) {
+        rc = snprintf(msg[i], sizeof(msg[i]), ""
+                          "TYPE=BR;"
+                          "BUTTON=SCAN;"
+                          "USER=\"%s\";"
+                          "FUNC=%s;"
+                          "HOST=%s:%d;"
+                          "APPNUM=1;"
+                          "DURATION=%d;"
+                          "CC=1;",
+                      host_name,
+                      scan_func[i],
+                      g_local_ip,
+                      BUTTON_HANDLER_PORT,
+                      DEVICE_REGISTER_DURATION_SEC);
+
+        if (rc < 0 || rc == sizeof(msg[i])) {
+            return -1;
+        }
+
+        functions[i] = msg[i];
     }
 
-    out = snmp_encode_msg(g_buf_end, &msg_header, 3, varbind);
-    msg_len = (int) (g_buf_end - out + 1);
-
-    msg_len = network_send(conn, out, msg_len);
-    if (msg_len < 0) {
-        perror("sendto");
-        goto out;
-    }
-
-    msg_len = network_receive(conn, g_buf, 1024);
-    if (msg_len < 0) {
-        perror("recvfrom");
-        goto out;
-    }
-
-    rc = 0;
-out:
-    return rc;
+    return snmp_register_scanner_host(conn, g_buf, sizeof(g_buf), functions);
 }
 
 static struct device *
@@ -218,13 +165,13 @@ device_handler_loop(void *arg)
         if (difftime(time_now, dev->next_ping_time) > 0) {
             /* only ping once per DEVICE_KEEPALIVE_DURATION_SEC */
             dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
-            dev->status = get_scanner_status(dev->conn);
-            if (dev->status != 0) {
+            dev->status = snmp_get_printer_status(dev->conn, g_buf, sizeof(g_buf));
+            if (dev->status != 10001) {
                 fprintf(stderr, "Warn: device at %s is currently unreachable.\n", dev->ip);
             }
         }
 
-        if (dev->status != 0) {
+        if (dev->status != 10001) {
             continue;
         }
 
@@ -248,7 +195,7 @@ device_handler_loop(void *arg)
 
         data_channel_kick(dev->channel);
     }
-    
+
     sleep(1);
 }
 
@@ -264,7 +211,7 @@ device_handler_stop(void *arg)
     }
 }
 
-void 
+void
 device_handler_init(const char *config_path)
 {
     struct device_handler *handler;
