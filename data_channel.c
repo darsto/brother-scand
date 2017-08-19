@@ -485,8 +485,11 @@ err:
 static void
 exchange_params1(struct data_channel *data_channel)
 {
+    struct data_channel_param *param;
     uint8_t *buf, *buf_end;
     int msg_len = 0, retries = 0;
+    size_t str_len;
+
 
     while (msg_len <= 0 && retries < 10) {
         msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
@@ -501,7 +504,7 @@ exchange_params1(struct data_channel *data_channel)
 
     /* process received data */
     assert(data_channel->buf[0] == 0x30); // ??
-    assert(data_channel->buf[1] == 0x15); // ??
+    //buf[1] == 0x15 or 0x55 (might refer to automatic/manual scan)
     assert(data_channel->buf[2] == 0x00); // ??
 
     assert(data_channel->buf[msg_len - 1] == 0x80); // end of message
@@ -513,6 +516,18 @@ exchange_params1(struct data_channel *data_channel)
     if (read_data_channel_params(data_channel, buf, buf_end, NULL) != 0) {
         fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
         goto err;
+    }
+
+    param = get_data_channel_param_by_id(data_channel, 'R');
+    if (strchr(param->value, ',') == NULL) {
+        str_len = strlen(param->value);
+        if (str_len >= sizeof(param->value) - 1) {
+            fprintf(stderr, "data_channel %d: received invalid resolution %s\n", data_channel->conn, param->value);
+            goto err;
+        }
+
+        param->value[str_len] = ',';
+        memcpy(&param->value[str_len + 1], param->value, str_len);
     }
 
     /* prepare a response */
@@ -646,12 +661,14 @@ init_data_channel(struct data_channel *data_channel)
     DATA_CH_PARAM('M', "CGRAY");
     DATA_CH_PARAM('E', "");
     DATA_CH_PARAM('C', "JPEG");
+    DATA_CH_PARAM('T', "JPEG");
     DATA_CH_PARAM('J', "");
     DATA_CH_PARAM('B', "50");
     DATA_CH_PARAM('N', "50");
     DATA_CH_PARAM('A', "");
     DATA_CH_PARAM('G', "1");
     DATA_CH_PARAM('L', "128");
+    DATA_CH_PARAM('P', "A4");
 
 #undef DATA_CH_PARAM
 }
