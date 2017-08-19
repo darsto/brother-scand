@@ -139,6 +139,7 @@ int
 network_reconnect(int conn_id)
 {
     struct network_conn *conn;
+    int retries;
 
     conn = get_network_conn(conn_id);
 
@@ -146,7 +147,16 @@ network_reconnect(int conn_id)
         network_disconnect(conn_id);
     }
 
-    if (init_conn(conn, conn->sin_me.sin_port, conn->sin_oth.sin_addr.s_addr, conn->sin_oth.sin_port) != 0) {
+    for (retries = 0; retries < 3; ++retries) {
+        usleep(1000 * 25);
+        if (init_conn(conn, conn->sin_me.sin_port,
+                      conn->sin_oth.sin_addr.s_addr, conn->sin_oth.sin_port) == 0) {
+            break;
+        }
+
+    }
+
+    if (retries == 3) {
         return -1;
     }
 
