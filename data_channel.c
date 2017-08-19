@@ -35,17 +35,27 @@ struct data_channel {
     FILE *tempfile;
 
     struct data_channel_page_data {
+        int id;
         int remaining_chunk_bytes;
-        bool last_chunk;
     } page_data;
 
-    int scanned_pages;
+    unsigned scanned_pages;
     struct event_thread *thread;
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
     uint8_t buf[2048];
     char *dest_ip;
     uint16_t dest_port;
+};
+
+struct data_packet_header {
+    uint8_t id;
+    uint16_t magic;
+    uint16_t page_id;
+    uint8_t unk2;
+    uint16_t progress;
+    uint16_t unk3;
+    uint8_t *payload;
 };
 
 static void receive_initial_data(struct data_channel *data_channel);
@@ -136,56 +146,68 @@ write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const
     return buf;
 }
 
-static void
-receive_data_footer(struct data_channel *data_channel)
+static int
+process_page_end_header(struct data_channel *data_channel, struct data_packet_header *header,
+                        uint32_t payload_len)
 {
-    int msg_len = 0, retries = 0;
-    uint8_t msg[10];
+    FILE* destfile;
+    char filename[64];
+    size_t size;
 
-    while (msg_len <= 0 && retries < 10) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
-        usleep(1000 * 25);
-        ++retries;
+    if (header->page_id != data_channel->page_data.id) {
+        fprintf(stderr, "data_channel %d: packet page_id mismatch (packet %u != local %u)\n",
+                data_channel->conn, header->page_id, data_channel->scanned_pages + 1);
+        return -1;
     }
 
-    if (retries == 10) {
-        fprintf(stderr, "Couldn't receive data packet on data_channel %d\n", data_channel->conn);
-        goto err;
+    sprintf(filename, "scan%u.jpg", data_channel->scanned_pages++);
+    destfile = fopen(filename, "w");
+    if (destfile == NULL) {
+        fprintf(stderr, "Cannot create file '%s' on data_channel %d\n", filename, data_channel->conn);
+        return -1;
     }
 
-    if (msg_len != 10) {
-        fprintf(stderr, "Received invalid data footer on data_channel %d. length = %d instead of %zu\n", data_channel->conn, msg_len, sizeof(msg));
-        goto err;
+    fseek(data_channel->tempfile, 0, SEEK_SET);
+    while ((size = fread(data_channel->buf, 1, sizeof(data_channel->buf), data_channel->tempfile))) {
+        fwrite(data_channel->buf, 1, size, destfile);
     }
 
-    memcpy(msg, data_channel->buf, sizeof(msg));
-    // 10 bytes of data, usually:
-    // 8207 (probably magic number)
-    // 0001 (id of just scanned page - starting with 1)
-    // 0084 0000 0000 (unknown - seem constant)
+    fclose(destfile);
+    fclose(data_channel->tempfile);
+    data_channel->tempfile = NULL;
 
     data_channel->process_cb = receive_initial_data;
-    return;
+    printf("data_channel %d: successfully received page %u\n", data_channel->conn, header->page_id);
 
-err:
-    abort();
+    return 0;
 }
 
 static int
-parse_chunk_header(struct data_channel *data_channel)
+process_chunk_header(struct data_channel *data_channel, struct data_packet_header *header,
+                     uint32_t payload_len)
 {
-    int progress;
+    int progress_percent;
     int total_chunk_size;
 
-    // bytes 0-5 are unknown, but seem constant (64 07 00 01 00 84)
-    // 6-7 is overall progress (little endian)
-    // 8-9 seem constant (00 00)
-    // 10-11 is upcoming chunk size in bytes (little endian)
+    if (payload_len < 2) {
+        fprintf(stderr, "data_channel %d: payload too small (%u/2 bytes)\n",
+                data_channel->conn, payload_len);
+        return -1;
+    }
 
-    progress = (data_channel->buf[6] | (data_channel->buf[7] << 8)) * 100 / DATA_CHANNEL_CHUNK_MAX_PROGRESS;
-    printf("data_channel %d: Receiving data: %d%%\n", data_channel->conn, progress);
+    if (data_channel->page_data.id == 0) {
+        printf("data_channel %d: now scanning page id %u\n", data_channel->conn, header->page_id);
+        data_channel->page_data.id = header->page_id;
+    } else if (header->page_id != data_channel->page_data.id) {
+        fprintf(stderr, "data_channel %d: packet page_id mismatch (packet %u != local %u)\n",
+                data_channel->conn, header->page_id, data_channel->page_data.id);
+        return -1;
+    }
 
-    data_channel->page_data.remaining_chunk_bytes = (data_channel->buf[10] | (data_channel->buf[11] << 8));
+    progress_percent = header->progress * 100 / DATA_CHANNEL_CHUNK_MAX_PROGRESS;
+    printf("data_channel %d: Receiving data: %d%%\n", data_channel->conn, progress_percent);
+
+    data_channel->page_data.remaining_chunk_bytes = header->payload[0] | (header->payload[1] << 8);
     total_chunk_size = data_channel->page_data.remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
 
     if (total_chunk_size > DATA_CHANNEL_CHUNK_SIZE) {
@@ -193,22 +215,81 @@ parse_chunk_header(struct data_channel *data_channel)
         return -1;
     }
 
-    data_channel->page_data.last_chunk = (total_chunk_size < DATA_CHANNEL_CHUNK_SIZE);
-
     return 0;
+}
+
+static int
+process_header(struct data_channel *data_channel, uint8_t *buf, uint32_t buf_len)
+{
+    struct data_packet_header header;
+    uint32_t payload_len;
+    int rc;
+
+    if (buf_len < 10) {
+        fprintf(stderr, "data_channel %d: invalid header length (%u/10+ bytes)\n",
+                data_channel->conn, buf_len);
+        return -1;
+    }
+
+    header.id = buf[0];
+    header.magic = buf[1] | (buf[2] << 8);
+    header.page_id = buf[3] | (buf[4] << 8);
+    header.unk2 = buf[5];
+    header.progress = buf[6] | (buf[7] << 8);
+    header.unk3 = buf[8] | (buf[9] << 8);
+    header.payload = &buf[10];
+    payload_len = buf_len - 10;
+
+    if (header.magic != 0x07) {
+        fprintf(stderr, "data_channel %d: invalid header magic number (%u != 0x07)\n",
+                data_channel->conn, header.magic);
+        return -1;
+    }
+
+    switch (header.id) {
+        case 0x64:
+            rc = process_chunk_header(data_channel, &header, payload_len);
+            break;
+        case 0x82:
+            rc = process_page_end_header(data_channel, &header, payload_len);
+            if (rc == 0) {
+                rc = 1;
+            }
+            break;
+        default:
+            fprintf(stderr, "data_channel %d: received unsupported header (id = %u)\n",
+                    data_channel->conn, header.id);
+            rc = -1;
+    }
+
+    return rc;
 }
 
 static int
 process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
 {
-    int rc;
-    size_t size;
-    char filename[64];
-    FILE* destfile;
+    int old_rem_chunk_bytes, rc;
 
-    if (data_channel->page_data.remaining_chunk_bytes == 0) {
-        rc = parse_chunk_header(data_channel);
-        if (rc != 0) {
+    if (data_channel->page_data.remaining_chunk_bytes < msg_len) {
+        /* chunk header might be somewhere inside this packet */
+        if (data_channel->page_data.remaining_chunk_bytes > 0) {
+            /* chunk header is in the middle of this packet */
+            old_rem_chunk_bytes = data_channel->page_data.remaining_chunk_bytes;
+
+            /* process up to chunk header */
+            rc = process_data(data_channel, buf, data_channel->page_data.remaining_chunk_bytes);
+            if (rc != 0) {
+                return rc;
+            }
+
+            buf += old_rem_chunk_bytes;
+            msg_len -= old_rem_chunk_bytes;
+        }
+
+        rc = process_header(data_channel, buf, msg_len);
+        if (rc == 1) {
+            return 0;
+        } else if (rc != 0) {
             fprintf(stderr, "Couldn't parse header on data_channel %d\n", data_channel->conn);
             return -1;
         }
@@ -219,34 +300,6 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
 
     fwrite(buf, sizeof(*buf), (size_t) msg_len, data_channel->tempfile);
     data_channel->page_data.remaining_chunk_bytes -= msg_len;
-
-    if (data_channel->page_data.remaining_chunk_bytes < 0) {
-        fprintf(stderr, "Received too much (invalid) data on data_channel %d\n", data_channel->conn);
-        return -1;
-    }
-
-    if (data_channel->page_data.remaining_chunk_bytes == 0 && data_channel->page_data.last_chunk) {
-        printf("Successfully received image data on data_channel %d\n", data_channel->conn);
-
-        assert(data_channel->scanned_pages < INT_MAX);
-        sprintf(filename, "scan%d.jpg", data_channel->scanned_pages++);
-        destfile = fopen(filename, "w");
-        if (destfile == NULL) {
-            fprintf(stderr, "Cannot create file '%s' on data_channel %d\n", filename, data_channel->conn);
-            return -1;
-        }
-
-        fseek(data_channel->tempfile, 0, SEEK_SET);
-        while ((size = fread(data_channel->buf, 1, sizeof(data_channel->buf), data_channel->tempfile))) {
-            fwrite(data_channel->buf, 1, size, destfile);
-        }
-
-        fclose(destfile);
-        fclose(data_channel->tempfile);
-        data_channel->tempfile = NULL;
-
-        data_channel->process_cb = receive_data_footer;
-    }
 
     return 0;
 }
