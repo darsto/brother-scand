@@ -150,6 +150,7 @@ network_reconnect(int conn_id)
         return -1;
     }
 
+    conn->connected = true;
     return conn_id;
 }
 
