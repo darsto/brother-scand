@@ -11,10 +11,14 @@
 
 #define CONFIG_HOSTNAME_LENGTH 16
 #define CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC 3
+#define CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES 5
+#define CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES 20
 
 struct device_config {
     const char *ip;
     unsigned timeout;
+    unsigned page_init_retries;
+    unsigned page_finish_retries;
     TAILQ_ENTRY(device_config) tailq;
 };
 

@@ -90,6 +90,8 @@ config_init(const char *config_path)
 
             dev_config->ip = strdup(var_str);
             dev_config->timeout = CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC;
+            dev_config->page_init_retries = CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES;
+            dev_config->page_finish_retries = CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES;
             TAILQ_INSERT_TAIL(&g_config.devices, dev_config, tailq);
         } else if (sscanf((char *) buf, "network.timeout %u", &var_uint) == 1) {
             if (dev_config == NULL) {
@@ -98,6 +100,20 @@ config_init(const char *config_path)
             }
 
             dev_config->timeout = var_uint;
+        } else if (sscanf((char *) buf, "network.page.init.retry %u", &var_uint) == 1) {
+            if (dev_config == NULL) {
+                fprintf(stderr, "Error: network.page.init.retry specified without a device.\n");
+                goto out;
+            }
+
+            dev_config->page_init_retries = var_uint;
+        } else if (sscanf((char *) buf, "network.page.finish.retry %u", &var_uint) == 1) {
+            if (dev_config == NULL) {
+                fprintf(stderr, "Error: network.page.finish.retry specified without a device.\n");
+                goto out;
+            }
+
+            dev_config->page_finish_retries = var_uint;
         }
     }
 

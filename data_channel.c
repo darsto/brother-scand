@@ -328,7 +328,7 @@ receive_data(struct data_channel *data_channel)
 
     if (data_channel->tempfile != NULL && data_channel->page_data.remaining_chunk_bytes == 0) {
         /* waiting for sensor rail to return */
-        retries = 5;
+        retries = data_channel->config->page_finish_retries;
     }
 
     for (; retries > 0; --retries) {
@@ -361,16 +361,17 @@ data_channel_reset_page_data(struct data_channel *data_channel)
 static int
 receive_initial_data(struct data_channel *data_channel)
 {
-    int msg_len, retries, rc;
+    int msg_len = 0, rc;
+    int retries = data_channel->config->page_init_retries;
 
-    for (retries = 0; retries < 3; ++retries) {
+    for (; retries > 0; --retries) {
         msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
         if (msg_len > 0) {
             break;
         }
     }
 
-    if (retries == 3 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
+    if (retries == 0 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
         /* no more documents to scan */
         data_channel_pause(data_channel);
         return 0;
