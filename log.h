@@ -4,8 +4,8 @@
  * that can be found in the LICENSE file.
  */
 
-#ifndef DCP_J105_LOG_H
-#define DCP_J105_LOG_H
+#ifndef BROTHER_LOG_H
+#define BROTHER_LOG_H
 
 #include <stdio.h>
 
