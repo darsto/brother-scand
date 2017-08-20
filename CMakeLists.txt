@@ -5,7 +5,7 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -pedantic -Wall -Wextra \
     -Werror -Wno-missing-braces -Wno-missing-field-initializers \
     -Wno-unused-variable -Wno-unused-parameter -Wformat=2 -Wswitch-default \
-    -Wno-unused-label -Wcast-align -Wpointer-arith -Wbad-function-cast \
+    -Wno-unused-label -Wno-unused-function -Wcast-align -Wpointer-arith -Wbad-function-cast \
     -Wstrict-overflow=5 -Wstrict-prototypes -Winline -Wundef -Wnested-externs \
     -Wcast-qual -Wshadow -Wunreachable-code -Wfloat-equal \
     -Wstrict-aliasing=2 -Wredundant-decls -Wold-style-definition")
