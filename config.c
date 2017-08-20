@@ -69,21 +69,20 @@ init_default_device_config(struct device_config *dev_config)
     param->id = ID; \
     strcpy(param->value, VAL);
 
-    ADD_SCAN_PARAM('F', "");
+    ADD_SCAN_PARAM('A', "");
+    ADD_SCAN_PARAM('B', "50");
+    ADD_SCAN_PARAM('C', "JPEG");
     ADD_SCAN_PARAM('D', "SIN");
     ADD_SCAN_PARAM('E', "");
-    ADD_SCAN_PARAM('R', "300,300");
-    ADD_SCAN_PARAM('M', "CGRAY");
-    ADD_SCAN_PARAM('E', "");
-    ADD_SCAN_PARAM('C', "JPEG");
-    ADD_SCAN_PARAM('T', "JPEG");
-    ADD_SCAN_PARAM('J', "");
-    ADD_SCAN_PARAM('B', "50");
-    ADD_SCAN_PARAM('N', "50");
-    ADD_SCAN_PARAM('A', "");
+    ADD_SCAN_PARAM('F', "");
     ADD_SCAN_PARAM('G', "1");
+    ADD_SCAN_PARAM('J', "");
     ADD_SCAN_PARAM('L', "128");
+    ADD_SCAN_PARAM('M', "CGRAY");
+    ADD_SCAN_PARAM('N', "50");
     ADD_SCAN_PARAM('P', "A4");
+    ADD_SCAN_PARAM('R', "300,300");
+    ADD_SCAN_PARAM('T', "JPEG");
 
 #undef ADD_SCAN_PARAM
 }
