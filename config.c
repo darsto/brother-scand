@@ -160,7 +160,7 @@ config_init(const char *config_path)
 
             for (i = 0; i < CONFIG_MAX_SCAN_PARAMS; ++i) {
                 if (dev_config->scan_params[i].id == var_char) {
-                    memcpy(dev_config->scan_params[i].value, var_str, 16);
+                    strcpy(dev_config->scan_params[i].value, var_str);
                     break;
                 }
             }
