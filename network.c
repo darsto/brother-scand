@@ -246,7 +246,9 @@ network_disconnect(int conn_id)
     struct network_conn *conn;
 
     conn = get_network_conn(conn_id);
-    assert(conn->connected);
+    if (!conn->connected) {
+        return 0;
+    }
 
     close(conn->fd);
     conn->connected = false;
