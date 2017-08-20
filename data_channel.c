@@ -414,7 +414,11 @@ exchange_params2(struct data_channel *data_channel)
 
     /* process received data */
     assert(data_channel->buf[0] == 0x00); // ??
-    assert(data_channel->buf[1] == 0x1d); // ??
+    if (data_channel->buf[1] != msg_len - 3) {
+        fprintf(stderr, "data_channel %d: invalid second handshake packet header.\n",
+                data_channel->conn);
+        return -1;
+    }
     assert(data_channel->buf[2] == 0x00); // ??
     assert(data_channel->buf[msg_len - 1] == 0x00);
 
