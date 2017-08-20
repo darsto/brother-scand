@@ -30,7 +30,7 @@ struct data_channel_param {
 
 struct data_channel {
     int conn;
-    void (*process_cb)(struct data_channel *data_channel);
+    int (*process_cb)(struct data_channel *data_channel);
 
     FILE *tempfile;
 
@@ -58,7 +58,21 @@ struct data_packet_header {
     uint8_t *payload;
 };
 
-static void receive_initial_data(struct data_channel *data_channel);
+static int receive_initial_data(struct data_channel *data_channel);
+
+static int
+set_paused(struct data_channel *data_channel)
+{
+    event_thread_pause(data_channel->thread);
+    sleep(1);
+    return 0;
+}
+
+static void
+data_channel_pause(struct data_channel *data_channel)
+{
+    data_channel->process_cb = set_paused;
+}
 
 static struct data_channel_param *
 get_data_channel_param_by_index(struct data_channel *data_channel, uint8_t index)
@@ -304,7 +318,7 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
     return 0;
 }
 
-static void
+static int
 receive_data(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0;
@@ -318,19 +332,16 @@ receive_data(struct data_channel *data_channel)
 
     if (retries == 10) {
         fprintf(stderr, "Couldn't receive data packet on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     rc = process_data(data_channel, data_channel->buf, msg_len);
     if (rc != 0) {
         fprintf(stderr, "Couldn't process data packet on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
-    return;
-
-err:
-    abort();
+    return 0;
 }
 
 static void
@@ -339,14 +350,7 @@ data_channel_reset_page_data(struct data_channel *data_channel)
     memset(&data_channel->page_data, 0, sizeof(data_channel->page_data));
 }
 
-static void
-set_paused(struct data_channel *data_channel)
-{
-    event_thread_pause(data_channel->thread);
-    sleep(1);
-}
-
-static void
+static int
 receive_initial_data(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0, rc;
@@ -360,31 +364,29 @@ receive_initial_data(struct data_channel *data_channel)
 
     if (retries == 300 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
         /* no more documents to scan */
-        data_channel->process_cb = set_paused;
-        return;
+        data_channel_pause(data_channel);
+        return 0;
     }
 
     data_channel_reset_page_data(data_channel);
     data_channel->tempfile = tmpfile();
     if (data_channel->tempfile == NULL) {
         fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     rc = process_data(data_channel, data_channel->buf, msg_len);
     if (rc != 0) {
         fprintf(stderr, "Couldn't process initial data packet on data_channel %d\n", data_channel->conn);
-        goto err;
+        fclose(data_channel->tempfile);
+        return -1;
     }
 
     data_channel->process_cb = receive_data;
-    return;
-
-err:
-    abort();
+    return 0;
 }
 
-static void
+static int
 exchange_params2(struct data_channel *data_channel)
 {
     struct data_channel_param *param;
@@ -402,7 +404,7 @@ exchange_params2(struct data_channel *data_channel)
 
     if (retries == 10) {
         fprintf(stderr, "Couldn't receive scan params on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     /* process received data */
@@ -456,7 +458,7 @@ exchange_params2(struct data_channel *data_channel)
     buf = write_data_channel_params(data_channel, buf, "RMCJBNADGL");
     if (buf == NULL) {
         fprintf(stderr, "Failed to write scan params on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     *buf++ = 0x80; // end of message
@@ -470,19 +472,15 @@ exchange_params2(struct data_channel *data_channel)
 
     if (retries == 10) {
         fprintf(stderr, "Couldn't send scan params on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     data_channel->process_cb = receive_initial_data;
-    return;
-
-err:
-    fprintf(stderr, "Failed to exchange scan params on data_channel %d\n", data_channel->conn);
-    abort();
+    return 0;
 }
 
 // TODO replace asserts with errors (its actually user input that's being handled)
-static void
+static int
 exchange_params1(struct data_channel *data_channel)
 {
     struct data_channel_param *param;
@@ -499,7 +497,7 @@ exchange_params1(struct data_channel *data_channel)
 
     if (retries == 10) {
         fprintf(stderr, "Couldn't receive initial scan params on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     /* process received data */
@@ -515,7 +513,7 @@ exchange_params1(struct data_channel *data_channel)
 
     if (read_data_channel_params(data_channel, buf, buf_end, NULL) != 0) {
         fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     param = get_data_channel_param_by_id(data_channel, 'R');
@@ -523,7 +521,7 @@ exchange_params1(struct data_channel *data_channel)
         str_len = strlen(param->value);
         if (str_len >= sizeof(param->value) - 1) {
             fprintf(stderr, "data_channel %d: received invalid resolution %s\n", data_channel->conn, param->value);
-            goto err;
+            return -1;
         }
 
         param->value[str_len] = ',';
@@ -539,7 +537,7 @@ exchange_params1(struct data_channel *data_channel)
     buf = write_data_channel_params(data_channel, buf, "RMD");
     if (buf == NULL) {
         fprintf(stderr, "Failed to write initial scan params on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     *buf++ = 0x80; // end of message
@@ -553,18 +551,14 @@ exchange_params1(struct data_channel *data_channel)
 
     if (retries == 10) {
         fprintf(stderr, "Couldn't send initial scan params on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     data_channel->process_cb = exchange_params2;
-    return;
-
-err:
-    fprintf(stderr, "Failed to exchange initial scan params on data_channel %d\n", data_channel->conn);
-    abort();
+    return 0;
 }
 
-static void
+static int
 init_connection(struct data_channel *data_channel)
 {
     int msg_len = 0, retries = 0;
@@ -577,7 +571,7 @@ init_connection(struct data_channel *data_channel)
 
     if (data_channel->conn < 0) {
         fprintf(stderr, "Could not connect to scanner.\n");
-        goto err;
+        return -1;
     }
 
     while (msg_len <= 0 && retries < 10) {
@@ -588,13 +582,12 @@ init_connection(struct data_channel *data_channel)
 
     if (retries == 10) {
         fprintf(stderr, "Couldn't receive welcome message on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     if (data_channel->buf[0] != '+') {
         fprintf(stderr, "Received invalid welcome message on data_channel %d\n", data_channel->conn);
-        hexdump("received message", data_channel->buf, (size_t) msg_len);
-        goto err;
+        return -1;
     }
 
     msg_len = 0, retries = 0;
@@ -606,23 +599,32 @@ init_connection(struct data_channel *data_channel)
 
     if (retries == 10) {
         fprintf(stderr, "Couldn't send welcome message on data_channel %d\n", data_channel->conn);
-        goto err;
+        return -1;
     }
 
     data_channel->process_cb = exchange_params1;
-    return;
-
-err:
-    fprintf(stderr, "Failed to init data_channel %d\n", data_channel->conn);
-    abort();
+    return 0;
 }
 
 static void
 data_channel_loop(void *arg)
 {
     struct data_channel *data_channel = arg;
+    int rc;
 
-    data_channel->process_cb(data_channel);
+    rc = data_channel->process_cb(data_channel);
+    if (rc != 0) {
+        fprintf(stderr, "data_channel %d: failed to process data. The channel will be closed.\n",
+                data_channel->conn);
+
+        network_disconnect(data_channel->conn);
+
+        if (data_channel->tempfile) {
+            fclose(data_channel->tempfile);
+        }
+
+        data_channel_pause(data_channel);
+    }
 }
 
 static void
@@ -640,7 +642,7 @@ data_channel_stop(void *arg)
     free(data_channel);
 }
 
-static void
+static int
 init_data_channel(struct data_channel *data_channel)
 {
     struct data_channel_param *param;
@@ -669,8 +671,9 @@ init_data_channel(struct data_channel *data_channel)
     DATA_CH_PARAM('G', "1");
     DATA_CH_PARAM('L', "128");
     DATA_CH_PARAM('P', "A4");
-
 #undef DATA_CH_PARAM
+
+    return 0;
 }
 
 void
