@@ -71,6 +71,7 @@ set_paused(struct data_channel *data_channel)
 static void
 data_channel_pause(struct data_channel *data_channel)
 {
+    printf("data_channel %d: going to sleep.\n", data_channel->conn);
     data_channel->process_cb = set_paused;
 }
 
@@ -321,16 +322,22 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
 static int
 receive_data(struct data_channel *data_channel)
 {
-    int msg_len = 0, retries = 0;
+    int msg_len, retries = 1;
     int rc;
 
-    while (msg_len <= 0 && retries < 10) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
-        usleep(1000 * 25);
-        ++retries;
+    if (data_channel->tempfile != NULL && data_channel->page_data.remaining_chunk_bytes == 0) {
+        /* waiting for sensor rail to return */
+        retries = 5;
     }
 
-    if (retries == 10) {
+    for (; retries > 0; --retries) {
+        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        if (msg_len > 0) {
+            break;
+        }
+    }
+
+    if (retries == 0) {
         fprintf(stderr, "Couldn't receive data packet on data_channel %d\n", data_channel->conn);
         return -1;
     }
@@ -353,16 +360,16 @@ data_channel_reset_page_data(struct data_channel *data_channel)
 static int
 receive_initial_data(struct data_channel *data_channel)
 {
-    int msg_len = 0, retries = 0, rc;
+    int msg_len, retries, rc;
 
-    /* 15 seconds timeout */
-    while (msg_len <= 0 && retries < 300) {
+    for (retries = 0; retries < 3; ++retries) {
         msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
-        usleep(1000 * 50);
-        ++retries;
+        if (msg_len > 0) {
+            break;
+        }
     }
 
-    if (retries == 300 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
+    if (retries == 3 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
         /* no more documents to scan */
         data_channel_pause(data_channel);
         return 0;
@@ -392,17 +399,18 @@ exchange_params2(struct data_channel *data_channel)
     struct data_channel_param *param;
     uint8_t *buf, *buf_end;
     long recv_params[7];
-    int msg_len = 0, retries = 0;
+    int msg_len, retries;
     size_t i, len;
     long tmp;
 
-    while (msg_len <= 0 && retries < 10) {
+    for (retries = 0; retries < 2; ++retries) {
         msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
-        usleep(1000 * 25);
-        ++retries;
+        if (msg_len > 0) {
+            break;
+        }
     }
 
-    if (retries == 10) {
+    if (retries == 2) {
         fprintf(stderr, "Couldn't receive scan params on data_channel %d\n", data_channel->conn);
         return -1;
     }
@@ -463,14 +471,14 @@ exchange_params2(struct data_channel *data_channel)
 
     *buf++ = 0x80; // end of message
 
-    msg_len = 0, retries = 0;
-    while (msg_len <= 0 && retries < 10) {
+    for (retries = 0; retries < 2; ++retries) {
         msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
-        usleep(1000 * 25);
-        ++retries;
+        if (msg_len > 0) {
+            break;
+        }
     }
 
-    if (retries == 10) {
+    if (retries == 2) {
         fprintf(stderr, "Couldn't send scan params on data_channel %d\n", data_channel->conn);
         return -1;
     }
@@ -485,18 +493,14 @@ exchange_params1(struct data_channel *data_channel)
 {
     struct data_channel_param *param;
     uint8_t *buf, *buf_end;
-    int msg_len = 0, retries = 0;
+    int msg_len;
     size_t str_len;
 
 
-    while (msg_len <= 0 && retries < 10) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
-        usleep(1000 * 25);
-        ++retries;
-    }
-
-    if (retries == 10) {
-        fprintf(stderr, "Couldn't receive initial scan params on data_channel %d\n", data_channel->conn);
+    msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+    if (msg_len < 0) {
+        fprintf(stderr, "Couldn't receive initial scan params on data_channel %d\n",
+                data_channel->conn);
         return -1;
     }
 
@@ -542,14 +546,8 @@ exchange_params1(struct data_channel *data_channel)
 
     *buf++ = 0x80; // end of message
 
-    msg_len = 0, retries = 0;
-    while (msg_len <= 0 && retries < 10) {
-        msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
-        usleep(1000 * 25);
-        ++retries;
-    }
-
-    if (retries == 10) {
+    msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
+    if (msg_len < 0) {
         fprintf(stderr, "Couldn't send initial scan params on data_channel %d\n", data_channel->conn);
         return -1;
     }
@@ -561,7 +559,7 @@ exchange_params1(struct data_channel *data_channel)
 static int
 init_connection(struct data_channel *data_channel)
 {
-    int msg_len = 0, retries = 0;
+    int msg_len;
 
     if (data_channel->conn >= 0) {
         data_channel->conn = network_reconnect(data_channel->conn);
@@ -574,13 +572,8 @@ init_connection(struct data_channel *data_channel)
         return -1;
     }
 
-    while (msg_len <= 0 && retries < 10) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
-        usleep(1000 * 25);
-        ++retries;
-    }
-
-    if (retries == 10) {
+    msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+    if (msg_len < 0) {
         fprintf(stderr, "Couldn't receive welcome message on data_channel %d\n", data_channel->conn);
         return -1;
     }
@@ -590,14 +583,8 @@ init_connection(struct data_channel *data_channel)
         return -1;
     }
 
-    msg_len = 0, retries = 0;
-    while (msg_len <= 0 && retries < 10) {
-        msg_len = network_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
-        usleep(1000 * 25);
-        ++retries;
-    }
-
-    if (retries == 10) {
+    msg_len = network_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
+    if (msg_len < 0) {
         fprintf(stderr, "Couldn't send welcome message on data_channel %d\n", data_channel->conn);
         return -1;
     }
