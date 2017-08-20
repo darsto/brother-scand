@@ -48,10 +48,44 @@ load_local_ip(void)
     } else {
         perror("inet_ntop");
     }
-    
+
 out:
     close(sock);
     return rc;
+}
+
+static void
+init_default_device_config(struct device_config *dev_config)
+{
+    struct scan_param *param;
+    int i = 0;
+
+    dev_config->timeout = CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC;
+    dev_config->page_init_retries = CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES;
+    dev_config->page_finish_retries = CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES;
+
+#define ADD_SCAN_PARAM(ID, VAL) \
+    param = &dev_config->scan_params[i++]; \
+    param->id = ID; \
+    strcpy(param->value, VAL);
+
+    ADD_SCAN_PARAM('F', "");
+    ADD_SCAN_PARAM('D', "SIN");
+    ADD_SCAN_PARAM('E', "");
+    ADD_SCAN_PARAM('R', "300,300");
+    ADD_SCAN_PARAM('M', "CGRAY");
+    ADD_SCAN_PARAM('E', "");
+    ADD_SCAN_PARAM('C', "JPEG");
+    ADD_SCAN_PARAM('T', "JPEG");
+    ADD_SCAN_PARAM('J', "");
+    ADD_SCAN_PARAM('B', "50");
+    ADD_SCAN_PARAM('N', "50");
+    ADD_SCAN_PARAM('A', "");
+    ADD_SCAN_PARAM('G', "1");
+    ADD_SCAN_PARAM('L', "128");
+    ADD_SCAN_PARAM('P', "A4");
+
+#undef ADD_SCAN_PARAM
 }
 
 int
@@ -61,8 +95,9 @@ config_init(const char *config_path)
     struct device_config *dev_config = NULL;
     char buf[1024];
     char var_str[256];
+    char var_char;
     unsigned var_uint;
-    int rc = -1;
+    int rc = -1, param_count = 0, i;
 
     TAILQ_INIT(&g_config.devices);
     if (load_local_ip() != 0) {
@@ -88,10 +123,8 @@ config_init(const char *config_path)
                 goto out;
             }
 
+            init_default_device_config(dev_config);
             dev_config->ip = strdup(var_str);
-            dev_config->timeout = CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC;
-            dev_config->page_init_retries = CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES;
-            dev_config->page_finish_retries = CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES;
             TAILQ_INSERT_TAIL(&g_config.devices, dev_config, tailq);
         } else if (sscanf((char *) buf, "network.timeout %u", &var_uint) == 1) {
             if (dev_config == NULL) {
@@ -114,6 +147,31 @@ config_init(const char *config_path)
             }
 
             dev_config->page_finish_retries = var_uint;
+        } else if (sscanf((char *) buf, "scan.param %c %15s", &var_char, var_str) == 2) {
+            if (dev_config == NULL) {
+                fprintf(stderr, "Error: scan.param specified without a device.\n");
+                goto out;
+            }
+
+            if (param_count >= CONFIG_MAX_SCAN_PARAMS) {
+                fprintf(stderr, "Error: too many scan.params. Max %d.\n",
+                        CONFIG_MAX_SCAN_PARAMS);
+                goto out;
+            }
+
+            for (i = 0; i < CONFIG_MAX_SCAN_PARAMS; ++i) {
+                if (dev_config->scan_params[i].id == var_char) {
+                    memcpy(dev_config->scan_params[i].value, var_str, 16);
+                    break;
+                }
+            }
+
+            if (i == CONFIG_MAX_SCAN_PARAMS) {
+                fprintf(stderr, "Error: invalid scan.param type '%c'.\n", var_char);
+                goto out;
+            }
+
+            ++param_count;
         }
     }
 

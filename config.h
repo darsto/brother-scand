@@ -10,15 +10,22 @@
 #include <sys/queue.h>
 
 #define CONFIG_HOSTNAME_LENGTH 16
+#define CONFIG_MAX_SCAN_PARAMS 16
 #define CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC 3
 #define CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES 5
 #define CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES 20
+
+struct scan_param {
+    char id;
+    char value[16];
+};
 
 struct device_config {
     const char *ip;
     unsigned timeout;
     unsigned page_init_retries;
     unsigned page_finish_retries;
+    struct scan_param scan_params[CONFIG_MAX_SCAN_PARAMS];
     TAILQ_ENTRY(device_config) tailq;
 };
 

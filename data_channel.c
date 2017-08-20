@@ -17,17 +17,11 @@
 #include "log.h"
 #include "network.h"
 
-#define DATA_CHANNEL_MAX_PARAMS 16
 #define DATA_CHANNEL_CHUNK_MAX_SIZE 0x10000
 #define DATA_CHANNEL_CHUNK_HEADER_SIZE 0xC
 #define DATA_CHANNEL_CHUNK_MAX_PROGRESS 0x1000
 #define DATA_CHANNEL_LOCAL_PORT 49424
 #define DATA_CHANNEL_TARGET_PORT 54921
-
-struct data_channel_param {
-    char id;
-    char value[16];
-};
 
 struct data_channel {
     int conn;
@@ -43,7 +37,7 @@ struct data_channel {
     unsigned scanned_pages;
     struct event_thread *thread;
 
-    struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
+    struct scan_param params[CONFIG_MAX_SCAN_PARAMS];
     uint8_t buf[2048];
 
     const struct device_config *config;
@@ -76,34 +70,35 @@ data_channel_pause(struct data_channel *data_channel)
     data_channel->process_cb = set_paused;
 }
 
-static struct data_channel_param *
-get_data_channel_param_by_index(struct data_channel *data_channel, uint8_t index)
+static struct scan_param *
+get_scan_param_by_index(struct data_channel *data_channel, uint8_t index)
 {
-    if (index >= DATA_CHANNEL_MAX_PARAMS) {
+    if (index >= CONFIG_MAX_SCAN_PARAMS) {
         return NULL;
     }
 
-    return (struct data_channel_param *) &data_channel->params + index;
+    return data_channel->params + index;
 }
 
-static struct data_channel_param *
-get_data_channel_param_by_id(struct data_channel *data_channel, uint8_t id)
+static struct scan_param *
+get_scan_param_by_id(struct data_channel *data_channel, char id)
 {
-    struct data_channel_param *ret;
+    struct scan_param *ret;
     uint8_t i = 0;
 
     do {
-        ret = get_data_channel_param_by_index(data_channel, i++);
+        ret = get_scan_param_by_index(data_channel, i++);
     } while (ret != NULL && ret->id != id);
 
     return ret;
 }
 
 static int
-read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_t *buf_end, const char *whitelist)
+read_scan_params(struct data_channel *data_channel, uint8_t *buf, uint8_t *buf_end,
+                 const char *whitelist)
 {
-    struct data_channel_param *param;
-    uint8_t id;
+    struct scan_param *param;
+    char id;
     size_t i;
 
     while (buf < buf_end) {
@@ -111,7 +106,7 @@ read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_
         assert(*buf == '=');
         ++buf;
 
-        param = get_data_channel_param_by_id(data_channel, id);
+        param = get_scan_param_by_id(data_channel, id);
         assert(param != NULL);
 
         i = 0;
@@ -136,13 +131,13 @@ read_data_channel_params(struct data_channel *data_channel, uint8_t *buf, uint8_
 }
 
 static uint8_t *
-write_data_channel_params(struct data_channel *data_channel, uint8_t *buf, const char *whitelist)
+write_scan_params(struct data_channel *data_channel, uint8_t *buf, const char *whitelist)
 {
-    struct data_channel_param *param;
+    struct scan_param *param;
     size_t len;
     uint8_t i = 0;
 
-    while ((param = get_data_channel_param_by_index(data_channel, i++)) != NULL) {
+    while ((param = get_scan_param_by_index(data_channel, i++)) != NULL) {
         len = strlen(param->value);
         if (len == 0) {
             continue;
@@ -398,7 +393,7 @@ receive_initial_data(struct data_channel *data_channel)
 static int
 exchange_params2(struct data_channel *data_channel)
 {
-    struct data_channel_param *param;
+    struct scan_param *param;
     uint8_t *buf, *buf_end;
     long recv_params[7];
     int msg_len, retries;
@@ -434,7 +429,7 @@ exchange_params2(struct data_channel *data_channel)
 
     len = buf_end - data_channel->buf - 4;
     assert(len < 15);
-    param = get_data_channel_param_by_id(data_channel, 'R');
+    param = get_scan_param_by_id(data_channel, 'R');
     assert(param);
 
     /* previously sent and just received dpi should match */
@@ -455,7 +450,7 @@ exchange_params2(struct data_channel *data_channel)
 
     assert(*buf == 0x00);
 
-    param = get_data_channel_param_by_id(data_channel, 'A');
+    param = get_scan_param_by_id(data_channel, 'A');
     assert(param);
     sprintf(param->value, "0,0,%ld,%ld", recv_params[4], recv_params[6]);
 
@@ -465,7 +460,7 @@ exchange_params2(struct data_channel *data_channel)
     *buf++ = 0x58; // packet id (?)
     *buf++ = 0x0a; // header end
 
-    buf = write_data_channel_params(data_channel, buf, "RMCJBNADGL");
+    buf = write_scan_params(data_channel, buf, "RMCJBNADGL");
     if (buf == NULL) {
         fprintf(stderr, "Failed to write scan params on data_channel %d\n", data_channel->conn);
         return -1;
@@ -493,7 +488,7 @@ exchange_params2(struct data_channel *data_channel)
 static int
 exchange_params1(struct data_channel *data_channel)
 {
-    struct data_channel_param *param;
+    struct scan_param *param;
     uint8_t *buf, *buf_end;
     int msg_len;
     size_t str_len;
@@ -517,12 +512,12 @@ exchange_params1(struct data_channel *data_channel)
     buf = data_channel->buf + 3;
     buf_end = data_channel->buf + msg_len - 2;
 
-    if (read_data_channel_params(data_channel, buf, buf_end, NULL) != 0) {
+    if (read_scan_params(data_channel, buf, buf_end, NULL) != 0) {
         fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
         return -1;
     }
 
-    param = get_data_channel_param_by_id(data_channel, 'R');
+    param = get_scan_param_by_id(data_channel, 'R');
     if (strchr(param->value, ',') == NULL) {
         str_len = strlen(param->value);
         if (str_len >= sizeof(param->value) - 1) {
@@ -540,7 +535,7 @@ exchange_params1(struct data_channel *data_channel)
     *buf++ = 0x49; // packet id (?)
     *buf++ = 0x0a; // header end
 
-    buf = write_data_channel_params(data_channel, buf, "RMD");
+    buf = write_scan_params(data_channel, buf, "RMD");
     if (buf == NULL) {
         fprintf(stderr, "Failed to write initial scan params on data_channel %d\n", data_channel->conn);
         return -1;
@@ -636,33 +631,11 @@ data_channel_stop(void *arg)
 static int
 init_data_channel(struct data_channel *data_channel)
 {
-    struct data_channel_param *param;
-    int i = 0;
-
     data_channel->thread = event_thread_self();
     data_channel->process_cb = set_paused;
 
-#define DATA_CH_PARAM(ID, VAL) \
-    param = &data_channel->params[i++]; \
-    param->id = ID; \
-    strcpy(param->value, VAL);
-
-    DATA_CH_PARAM('F', "");
-    DATA_CH_PARAM('D', "SIN");
-    DATA_CH_PARAM('E', "");
-    DATA_CH_PARAM('R', "300,300");
-    DATA_CH_PARAM('M', "CGRAY");
-    DATA_CH_PARAM('E', "");
-    DATA_CH_PARAM('C', "JPEG");
-    DATA_CH_PARAM('T', "JPEG");
-    DATA_CH_PARAM('J', "");
-    DATA_CH_PARAM('B', "50");
-    DATA_CH_PARAM('N', "50");
-    DATA_CH_PARAM('A', "");
-    DATA_CH_PARAM('G', "1");
-    DATA_CH_PARAM('L', "128");
-    DATA_CH_PARAM('P', "A4");
-#undef DATA_CH_PARAM
+    memcpy(data_channel->params, data_channel->config->scan_params,
+           sizeof(data_channel->config->scan_params));
 
     return 0;
 }
