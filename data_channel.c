@@ -18,10 +18,11 @@
 #include "network.h"
 
 #define DATA_CHANNEL_MAX_PARAMS 16
-#define DATA_CHANNEL_CHUNK_SIZE 0x10000
+#define DATA_CHANNEL_CHUNK_MAX_SIZE 0x10000
 #define DATA_CHANNEL_CHUNK_HEADER_SIZE 0xC
 #define DATA_CHANNEL_CHUNK_MAX_PROGRESS 0x1000
-#define DATA_CHANNEL_PORT 49424
+#define DATA_CHANNEL_LOCAL_PORT 49424
+#define DATA_CHANNEL_TARGET_PORT 54921
 
 struct data_channel_param {
     char id;
@@ -44,8 +45,8 @@ struct data_channel {
 
     struct data_channel_param params[DATA_CHANNEL_MAX_PARAMS];
     uint8_t buf[2048];
-    char *dest_ip;
-    uint16_t dest_port;
+
+    const struct device_config *config;
 };
 
 struct data_packet_header {
@@ -225,7 +226,7 @@ process_chunk_header(struct data_channel *data_channel, struct data_packet_heade
     data_channel->page_data.remaining_chunk_bytes = header->payload[0] | (header->payload[1] << 8);
     total_chunk_size = data_channel->page_data.remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
 
-    if (total_chunk_size > DATA_CHANNEL_CHUNK_SIZE) {
+    if (total_chunk_size > DATA_CHANNEL_CHUNK_MAX_SIZE) {
         fprintf(stderr, "Invalid chunk size on data_channel %d\n", data_channel->conn);
         return -1;
     }
@@ -564,7 +565,10 @@ init_connection(struct data_channel *data_channel)
     if (data_channel->conn >= 0) {
         data_channel->conn = network_reconnect(data_channel->conn);
     } else {
-        data_channel->conn = network_init_conn(NETWORK_TYPE_TCP, htons(DATA_CHANNEL_PORT), inet_addr(data_channel->dest_ip), htons(data_channel->dest_port));
+        data_channel->conn = network_init_conn(NETWORK_TYPE_TCP, htons(DATA_CHANNEL_LOCAL_PORT),
+                                               inet_addr(data_channel->config->ip),
+                                               htons(DATA_CHANNEL_TARGET_PORT),
+                                               data_channel->config->timeout);
     }
 
     if (data_channel->conn < 0) {
@@ -625,7 +629,6 @@ data_channel_stop(void *arg)
 
     network_disconnect(data_channel->conn);
 
-    free(data_channel->dest_ip);
     free(data_channel);
 }
 
@@ -699,7 +702,7 @@ err:
 }
 
 struct data_channel *
-data_channel_create(const char *dest_ip, uint16_t port)
+data_channel_create(struct device_config *config)
 {
     struct data_channel *data_channel;
     struct event_thread *thread;
@@ -711,8 +714,7 @@ data_channel_create(const char *dest_ip, uint16_t port)
     }
 
     data_channel->conn = -1;
-    data_channel->dest_ip = strdup(dest_ip);
-    data_channel->dest_port = port;
+    data_channel->config = config;
     data_channel->process_cb = init_data_channel;
 
     thread = event_thread_create("data_channel", data_channel_loop, data_channel_stop, data_channel);

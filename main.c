@@ -56,7 +56,12 @@ main(int argc, char *argv[])
         fprintf(stderr, "Failed to bind SIGINT handler.\n");
         return 1;
     }
-    
+
+    if (config_init(config_path) != 0) {
+        fprintf(stderr, "Fatal: could not init config.\n");
+        return -1;
+    }
+
     device_handler_init(config_path);
     
     event_thread_lib_wait();

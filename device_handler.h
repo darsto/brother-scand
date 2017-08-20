@@ -4,10 +4,12 @@
  * that can be found in the LICENSE file.
  */
 
-#ifndef DCP_J105_DEVICE_HANDLER_H
-#define DCP_J105_DEVICE_HANDLER_H
+#ifndef BROTHER_DEVICE_HANDLER_H
+#define BROTHER_DEVICE_HANDLER_H
+
+#include "config.h"
 
 void device_handler_init(const char *config_path);
-struct device *device_handler_add_device(const char *ip);
+struct device *device_handler_add_device(struct device_config *config);
 
-#endif //DCP_J105_DEVICE_HANDLER_H
+#endif //BROTHER_DEVICE_HANDLER_H

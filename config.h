@@ -9,22 +9,19 @@
 
 #include <sys/queue.h>
 
-#define BROTHER_HOSTNAME_LENGTH 16
+#define CONFIG_HOSTNAME_LENGTH 16
+#define CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC 3
 
-struct device {
-    int conn;
-    struct data_channel *channel;
+struct device_config {
     const char *ip;
-    int status;
-    time_t next_ping_time;
-    time_t next_register_time;
-    TAILQ_ENTRY(device) tailq;
+    unsigned timeout;
+    TAILQ_ENTRY(device_config) tailq;
 };
 
 struct brother_config {
-    char hostname[BROTHER_HOSTNAME_LENGTH];
+    char hostname[CONFIG_HOSTNAME_LENGTH];
     char local_ip[16];
-    TAILQ_HEAD(, device) devices;
+    TAILQ_HEAD(, device_config) devices;
 };
 
 struct brother_config g_config;

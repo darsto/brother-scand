@@ -17,7 +17,6 @@
 #include "log.h"
 
 #define MAX_NETWORK_CONNECTIONS 32
-#define CONNECTION_TIMEOUT_SEC 3
 
 struct network_conn {
     int fd;
@@ -26,6 +25,7 @@ struct network_conn {
     bool dynamic_client;
     struct sockaddr_in sin_me;
     struct sockaddr_in sin_oth;
+    struct timeval timeout;
 };
 
 static atomic_int g_conn_count;
@@ -44,9 +44,8 @@ get_network_conn(int conn_id)
 }
 
 static int
-create_socket(struct network_conn *conn)
+create_socket(struct network_conn *conn, unsigned timeout_sec)
 {
-    struct timeval timeout;
     int one = 1;
 
     if (conn->type == NETWORK_TYPE_UDP) {
@@ -60,14 +59,16 @@ create_socket(struct network_conn *conn)
         return -1;
     }
 
-    timeout.tv_sec = CONNECTION_TIMEOUT_SEC;
-    timeout.tv_usec = 0;
+    conn->timeout.tv_sec = timeout_sec;
+    conn->timeout.tv_usec = 0;
 
-    if (setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
+    if (setsockopt(conn->fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&conn->timeout,
+                   sizeof(conn->timeout)) != 0) {
         perror("setsockopt recv");
     }
 
-    if (setsockopt(conn->fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&timeout, sizeof(timeout)) != 0) {
+    if (setsockopt(conn->fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&conn->timeout,
+                   sizeof(conn->timeout)) != 0) {
         perror("setsockopt send");
     }
 
@@ -79,9 +80,10 @@ create_socket(struct network_conn *conn)
 }
 
 static int
-init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port)
+init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr,
+          in_port_t dest_port, unsigned timeout_sec)
 {
-    if (create_socket(conn) == -1) {
+    if (create_socket(conn, timeout_sec) == -1) {
         return -1;
     }
 
@@ -89,7 +91,8 @@ init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr, 
     conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
     conn->sin_me.sin_port = local_port;
 
-    if (local_port > 0 && bind(conn->fd, (struct sockaddr *) &conn->sin_me, sizeof(conn->sin_me)) != 0) {
+    if (local_port > 0 && bind(conn->fd, (struct sockaddr *) &conn->sin_me,
+                               sizeof(conn->sin_me)) != 0) {
         perror("bind");
         close(conn->fd);
         return -1;
@@ -117,7 +120,8 @@ init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr, 
 }
 
 int
-network_init_conn(enum network_type type, in_port_t local_port, in_addr_t dest_addr, in_port_t dest_port)
+network_init_conn(enum network_type type, in_port_t local_port, in_addr_t dest_addr,
+                  in_port_t dest_port, unsigned timeout_sec)
 {
     int conn_id;
     struct network_conn *conn;
@@ -127,7 +131,7 @@ network_init_conn(enum network_type type, in_port_t local_port, in_addr_t dest_a
     assert(!conn->connected);
 
     conn->type = type;
-    if (init_conn(conn, local_port, dest_addr, dest_port) != 0) {
+    if (init_conn(conn, local_port, dest_addr, dest_port, timeout_sec) != 0) {
         return -1;
     }
 
@@ -150,7 +154,8 @@ network_reconnect(int conn_id)
     for (retries = 0; retries < 3; ++retries) {
         usleep(1000 * 25);
         if (init_conn(conn, conn->sin_me.sin_port,
-                      conn->sin_oth.sin_addr.s_addr, conn->sin_oth.sin_port) == 0) {
+                      conn->sin_oth.sin_addr.s_addr, conn->sin_oth.sin_port,
+                      (unsigned) conn->timeout.tv_sec) == 0) {
             break;
         }
 
@@ -175,7 +180,8 @@ network_send(int conn_id, const void *buf, size_t len)
     assert(conn->connected);
 
     if (conn->type == NETWORK_TYPE_UDP) {
-        sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth, sizeof(conn->sin_oth));
+        sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth,
+                            sizeof(conn->sin_oth));
     } else {
         sent_bytes = send(conn->fd, buf, len, 0);
     }
@@ -184,7 +190,8 @@ network_send(int conn_id, const void *buf, size_t len)
         perror("sendto");
     }
 
-    snprintf(hexdump_line, sizeof(hexdump_line), "sent %zd/%zu bytes to %d", sent_bytes, len, ntohs(conn->sin_oth.sin_port));
+    snprintf(hexdump_line, sizeof(hexdump_line), "sent %zd/%zu bytes to %d", sent_bytes,
+             len, ntohs(conn->sin_oth.sin_port));
     hexdump(hexdump_line, buf, len);
     
     return (int) sent_bytes;
@@ -221,7 +228,8 @@ network_receive(int conn_id, void *buf, size_t len)
         memcpy(&conn->sin_oth, &sin_oth_tmp, sizeof(conn->sin_oth));
     }
 
-    snprintf(hexdump_line, sizeof(hexdump_line), "received %zd bytes from %d", recv_bytes, ntohs(conn->sin_oth.sin_port));
+    snprintf(hexdump_line, sizeof(hexdump_line), "received %zd bytes from %d",
+             recv_bytes, ntohs(conn->sin_oth.sin_port));
     hexdump(hexdump_line, buf, recv_bytes);
 
     return (int) recv_bytes;

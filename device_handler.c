@@ -19,17 +19,29 @@
 #include "data_channel.h"
 #include "snmp.h"
 
-#define DATA_PORT 54921
 #define DEVICE_HANDLER_PORT 49976
 #define DEVICE_REGISTER_DURATION_SEC 360
 #define DEVICE_KEEPALIVE_DURATION_SEC 5
 #define BUTTON_HANDLER_PORT 54925
 #define SNMP_PORT 161
 
+struct device {
+    int conn;
+    struct data_channel *channel;
+    int status;
+    time_t next_ping_time;
+    time_t next_register_time;
+    const struct device_config *config;
+    TAILQ_ENTRY(device) tailq;
+};
+
 struct device_handler {
     int button_conn;
     struct event_thread *thread;
+    TAILQ_HEAD(, device) devices;
 };
+
+#define BUTTON_HANDLER_NETWORK_TIMEOUT 3
 
 static atomic_int g_appnum;
 static struct device_handler g_dev_handler;
@@ -70,21 +82,21 @@ register_scanner_host(int conn)
 }
 
 struct device *
-device_handler_add_device(const char *ip)
+device_handler_add_device(struct device_config *config)
 {
     struct device *dev;
     int conn, status, i;
 
     conn = network_init_conn(NETWORK_TYPE_UDP, htons(DEVICE_HANDLER_PORT),
-                             inet_addr(ip), htons(SNMP_PORT));
+                             inet_addr(config->ip), htons(SNMP_PORT), config->timeout);
     if (conn < 0) {
-        fprintf(stderr, "Could not connect to device at %s.\n", ip);
+        fprintf(stderr, "Could not connect to device at %s.\n", config->ip);
         return NULL;
     }
 
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
-        fprintf(stderr, "Could not calloc memory for device at %s.\n", ip);
+        fprintf(stderr, "Could not calloc memory for device at %s.\n", config->ip);
         network_disconnect(conn);
         return NULL;
     }
@@ -95,24 +107,25 @@ device_handler_add_device(const char *ip)
             break;
         }
 
-        fprintf(stderr, "Warn: device at %s is currently unreachable. Retry %d/3.\n", ip, i + 1);
+        fprintf(stderr, "Warn: device at %s is currently unreachable. Retry %d/3.\n",
+                config->ip, i + 1);
     }
 
     if (i == 3) {
-        fprintf(stderr, "Error: device at %s is unreachable.\n", ip);
+        fprintf(stderr, "Error: device at %s is unreachable.\n", config->ip);
         network_disconnect(conn);
         return NULL;
     }
 
     dev->conn = conn;
-    dev->ip = strdup(ip);
-    dev->channel = data_channel_create(dev->ip, DATA_PORT);
+    dev->config = config;
+    dev->channel = data_channel_create(config);
     if (dev->channel == NULL) {
-        fprintf(stderr, "Failed to create data_channel for device %s.\n", dev->ip);
+        fprintf(stderr, "Failed to create data_channel for device %s.\n", config->ip);
         return NULL;
     }
 
-    TAILQ_INSERT_TAIL(&g_config.devices, dev, tailq);
+    TAILQ_INSERT_TAIL(&g_dev_handler.devices, dev, tailq);
     return dev;
 }
 
@@ -124,7 +137,7 @@ device_handler_loop(void *arg)
     char client_ip[16];
     int msg_len, rc;
 
-    TAILQ_FOREACH(dev, &g_config.devices, tailq) {
+    TAILQ_FOREACH(dev, &g_dev_handler.devices, tailq) {
         time_now = time(NULL);
 
         if (difftime(time_now, dev->next_ping_time) > 0) {
@@ -132,7 +145,7 @@ device_handler_loop(void *arg)
             dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
             dev->status = snmp_get_printer_status(dev->conn, g_buf, sizeof(g_buf));
             if (dev->status != 10001) {
-                fprintf(stderr, "Warn: device at %s is currently unreachable.\n", dev->ip);
+                fprintf(stderr, "Warn: device at %s is currently unreachable.\n", dev->config->ip);
             }
         }
 
@@ -159,8 +172,8 @@ device_handler_loop(void *arg)
         goto out;
     }
 
-    TAILQ_FOREACH(dev, &g_config.devices, tailq) {
-        if (strncmp(dev->ip, client_ip, 16) == 0) {
+    TAILQ_FOREACH(dev, &g_dev_handler.devices, tailq) {
+        if (strncmp(dev->config->ip, client_ip, 16) == 0) {
             msg_len = network_send(g_dev_handler.button_conn, g_buf, msg_len);
             if (msg_len < 0) {
                 perror("sendto");
@@ -183,8 +196,8 @@ device_handler_stop(void *arg)
 {
     struct device *dev;
 
-    while ((dev = TAILQ_FIRST(&g_config.devices))) {
-        TAILQ_REMOVE(&g_config.devices, dev, tailq);
+    while ((dev = TAILQ_FIRST(&g_dev_handler.devices))) {
+        TAILQ_REMOVE(&g_dev_handler.devices, dev, tailq);
         free(dev);
     }
 }
@@ -192,21 +205,28 @@ device_handler_stop(void *arg)
 void
 device_handler_init(const char *config_path)
 {
-    atomic_store(&g_appnum, 1);
+    struct device_config *dev_config;
 
-    if (config_init(config_path) != 0) {
-        fprintf(stderr, "Fatal: could not init config.\n");
-        return;
+    atomic_store(&g_appnum, 1);
+    TAILQ_INIT(&g_dev_handler.devices);
+
+    TAILQ_FOREACH(dev_config, &g_config.devices, tailq) {
+        if (device_handler_add_device(dev_config) == NULL) {
+            fprintf(stderr, "Error: could not load device '%s'.\n", dev_config->ip);
+            return;
+        }
     }
 
     g_dev_handler.button_conn = network_init_conn(NETWORK_TYPE_UDP, htons(BUTTON_HANDLER_PORT),
-                                                  0, 0);
+                                                  0, 0, BUTTON_HANDLER_NETWORK_TIMEOUT);
     if (g_dev_handler.button_conn < 0) {
-        fprintf(stderr, "Fatal: Could not setup button handler connection at %s.\n", g_config.local_ip);
+        fprintf(stderr, "Fatal: Could not setup button handler connection at %s.\n",
+                g_config.local_ip);
         return;
     }
 
-    g_dev_handler.thread = event_thread_create("device_handler", device_handler_loop, device_handler_stop, NULL);
+    g_dev_handler.thread = event_thread_create("device_handler", device_handler_loop,
+                                               device_handler_stop, NULL);
     if (g_dev_handler.thread == NULL) {
         fprintf(stderr, "Fatal: could not init device_handler thread.\n");
         network_disconnect(g_dev_handler.button_conn);

@@ -11,7 +11,6 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include "config.h"
-#include "device_handler.h"
 
 static int
 load_local_ip(void)
@@ -59,9 +58,10 @@ int
 config_init(const char *config_path)
 {
     FILE* config;
-    struct device *dev;
+    struct device_config *dev_config = NULL;
     char buf[1024];
-    char variable[256];
+    char var_str[256];
+    unsigned var_uint;
     int rc = -1;
 
     TAILQ_INIT(&g_config.devices);
@@ -79,13 +79,25 @@ config_init(const char *config_path)
     }
 
     while (fgets((char *) buf, sizeof(buf), config)) {
-        if (sscanf((char *) buf, "hostname %15s", variable) == 1) {
-            memcpy(g_config.hostname, variable, sizeof(g_config.hostname));
-        } else if (sscanf((char *) buf, "ip %64s", variable) == 1) {
-            dev = device_handler_add_device(variable);
-            if (dev == NULL) {
-                fprintf(stderr, "Error: could not load device '%s'.\n", variable);
+        if (sscanf((char *) buf, "hostname %15s", var_str) == 1) {
+            memcpy(g_config.hostname, var_str, sizeof(g_config.hostname));
+        } else if (sscanf((char *) buf, "ip %64s", var_str) == 1) {
+            dev_config = calloc(1, sizeof(*dev_config));
+            if (dev_config == NULL) {
+                fprintf(stderr, "Error: could not alloc memory for device config '%s'.\n", var_str);
+                goto out;
             }
+
+            dev_config->ip = strdup(var_str);
+            dev_config->timeout = CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC;
+            TAILQ_INSERT_TAIL(&g_config.devices, dev_config, tailq);
+        } else if (sscanf((char *) buf, "network.timeout %u", &var_uint) == 1) {
+            if (dev_config == NULL) {
+                fprintf(stderr, "Error: timeout specified without a device.\n");
+                goto out;
+            }
+
+            dev_config->timeout = var_uint;
         }
     }
 
