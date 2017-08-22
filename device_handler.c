@@ -48,15 +48,18 @@ static struct device_handler g_dev_handler;
 static uint8_t g_buf[1024];
 
 static int
-register_scanner_host(int conn)
+register_scanner_host(struct device *dev)
 {
-    const char *scan_func[4] = { "IMAGE", "OCR", "FILE", "EMAIL" };
-    char msg[4][256];
-    const char *functions[4];
-    int i, rc;
+    const char *functions[4] = { 0 };
+    char msg[CONFIG_SCAN_MAX_FUNCS][256];
+    int num_funcs = 0, i, rc;
 
-    for (i = 0; i < 4; ++i) {
-        rc = snprintf(msg[i], sizeof(msg[i]), ""
+    for (i = 0; i < CONFIG_SCAN_MAX_FUNCS; ++i) {
+        if (dev->config->scan_funcs[i] == NULL) {
+            continue;
+        }
+
+        rc = snprintf(msg[num_funcs], sizeof(msg), ""
                           "TYPE=BR;"
                           "BUTTON=SCAN;"
                           "USER=\"%s\";"
@@ -66,19 +69,20 @@ register_scanner_host(int conn)
                           "DURATION=%d;"
                           "CC=1;",
                       g_config.hostname,
-                      scan_func[i],
+                      g_scan_func_str[i],
                       g_config.local_ip, BUTTON_HANDLER_PORT,
                       atomic_fetch_add(&g_appnum, 1),
                       DEVICE_REGISTER_DURATION_SEC);
 
-        if (rc < 0 || rc == sizeof(msg[i])) {
+        if (rc < 0 || rc == 255) {
             return -1;
         }
 
-        functions[i] = msg[i];
+        functions[num_funcs] = msg[num_funcs];
+        ++num_funcs;
     }
 
-    return snmp_register_scanner_host(conn, g_buf, sizeof(g_buf), functions);
+    return snmp_register_scanner_host(dev->conn, g_buf, sizeof(g_buf), functions);
 }
 
 struct device *
@@ -156,7 +160,7 @@ device_handler_loop(void *arg)
         if (difftime(time_now, dev->next_register_time) > 0) {
             /* only register once per DEVICE_REGISTER_DURATION_SEC */
             dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
-            register_scanner_host(dev->conn);
+            register_scanner_host(dev);
         }
     }
 

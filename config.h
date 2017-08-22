@@ -10,7 +10,12 @@
 #include <sys/queue.h>
 
 #define CONFIG_HOSTNAME_LENGTH 16
-#define CONFIG_MAX_SCAN_PARAMS 16
+#define CONFIG_SCAN_MAX_PARAMS 16
+#define CONFIG_SCAN_MAX_FUNCS 4
+#define CONFIG_SCAN_FUNC_IMAGE 0
+#define CONFIG_SCAN_FUNC_OCR 1
+#define CONFIG_SCAN_FUNC_EMAIL 2
+#define CONFIG_SCAN_FUNC_FILE 3
 #define CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC 3
 #define CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES 5
 #define CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES 20
@@ -25,7 +30,8 @@ struct device_config {
     unsigned timeout;
     unsigned page_init_retries;
     unsigned page_finish_retries;
-    struct scan_param scan_params[CONFIG_MAX_SCAN_PARAMS];
+    struct scan_param scan_params[CONFIG_SCAN_MAX_PARAMS];
+    char *scan_funcs[CONFIG_SCAN_MAX_FUNCS];
     TAILQ_ENTRY(device_config) tailq;
 };
 
@@ -36,6 +42,7 @@ struct brother_config {
 };
 
 struct brother_config g_config;
+extern const char *g_scan_func_str[CONFIG_SCAN_MAX_FUNCS];
 
 int config_init(const char *config_path);
 

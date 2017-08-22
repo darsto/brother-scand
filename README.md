@@ -18,8 +18,9 @@ mkdir build
 cd build
 cmake -DCMAKE_BUILD_TYPE=Release ..
 make
-cp ../out/brother.config ./
+cp ../out/* ./
 $EDITOR ./brother.config
+chmod +x ./scanhook.sh
 ./brother
 ```
 

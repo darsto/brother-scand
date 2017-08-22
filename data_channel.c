@@ -12,6 +12,7 @@
 #include <assert.h>
 #include <memory.h>
 #include <zconf.h>
+#include <errno.h>
 #include "data_channel.h"
 #include "event_thread.h"
 #include "log.h"
@@ -37,7 +38,7 @@ struct data_channel {
     unsigned scanned_pages;
     struct event_thread *thread;
 
-    struct scan_param params[CONFIG_MAX_SCAN_PARAMS];
+    struct scan_param params[CONFIG_SCAN_MAX_PARAMS];
     uint8_t buf[2048];
 
     const struct device_config *config;
@@ -73,7 +74,7 @@ data_channel_pause(struct data_channel *data_channel)
 static struct scan_param *
 get_scan_param_by_index(struct data_channel *data_channel, uint8_t index)
 {
-    if (index >= CONFIG_MAX_SCAN_PARAMS) {
+    if (index >= CONFIG_SCAN_MAX_PARAMS) {
         return NULL;
     }
 
@@ -162,8 +163,10 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
                         uint32_t payload_len)
 {
     FILE* destfile;
+    struct scan_param *param;
     char filename[64];
     size_t size;
+    int i, rc;
 
     if (header->page_id != data_channel->page_data.id) {
         fprintf(stderr, "data_channel %d: packet page_id mismatch (packet %u != local %u)\n",
@@ -189,6 +192,23 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
 
     data_channel->process_cb = receive_initial_data;
     printf("data_channel %d: successfully received page %u\n", data_channel->conn, header->page_id);
+
+    param = get_scan_param_by_id(data_channel, 'F');
+    for (i = 0; i < CONFIG_SCAN_MAX_FUNCS; ++i) {
+        if (strcmp(param->value, g_scan_func_str[i]) == 0) {
+            break;
+        }
+    }
+
+    rc = snprintf((char *) data_channel->buf, sizeof(data_channel->buf), "%s %s %s",
+             data_channel->config->scan_funcs[i], data_channel->config->ip, filename);
+    if (rc < 0 || rc == sizeof(data_channel->buf)) {
+        fprintf(stderr, "data_channel %d: couldn't execute user hook. snprintf failed: %d\n",
+                data_channel->conn, errno);
+        return -1;
+    }
+
+    system((char *) data_channel->buf);
 
     return 0;
 }
@@ -496,7 +516,7 @@ exchange_params1(struct data_channel *data_channel)
     uint8_t *buf, *buf_end;
     int msg_len;
     size_t str_len;
-
+    int i;
 
     msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
     if (msg_len < 0) {
@@ -531,6 +551,19 @@ exchange_params1(struct data_channel *data_channel)
 
         param->value[str_len] = ',';
         memcpy(&param->value[str_len + 1], param->value, str_len);
+    }
+
+    param = get_scan_param_by_id(data_channel, 'F');
+    for (i = 0; i < CONFIG_SCAN_MAX_FUNCS; ++i) {
+        if (strcmp(param->value, g_scan_func_str[i]) == 0) {
+            break;
+        }
+    }
+
+    if (i == CONFIG_SCAN_MAX_FUNCS) {
+        fprintf(stderr, "data_channel %d: received invalid scan function %s.\n",
+                data_channel->conn, param->value);
+        return -1;
     }
 
     /* prepare a response */

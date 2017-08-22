@@ -11,6 +11,7 @@
 #include "ber/snmp.h"
 #include "network.h"
 #include "log.h"
+#include "config.h"
 
 static atomic_int g_request_id;
 static uint32_t g_brInfoPrinterUStatusOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
@@ -72,7 +73,7 @@ snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *f
     uint8_t *buf_end = buf + buf_len - 1;
 
     struct snmp_msg_header msg_header = {0};
-    struct snmp_varbind varbind[4] = {0};
+    struct snmp_varbind varbind[CONFIG_SCAN_MAX_FUNCS] = {0};
     va_list args;
     size_t snmp_len;
     int msg_len;

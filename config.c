@@ -12,6 +12,13 @@
 #include <unistd.h>
 #include "config.h"
 
+const char *g_scan_func_str[CONFIG_SCAN_MAX_FUNCS] = {
+    [CONFIG_SCAN_FUNC_IMAGE] = "IMAGE",
+    [CONFIG_SCAN_FUNC_OCR] = "OCR",
+    [CONFIG_SCAN_FUNC_EMAIL] = "EMAIL",
+    [CONFIG_SCAN_FUNC_FILE] = "FILE",
+};
+
 static int
 load_local_ip(void)
 {
@@ -93,7 +100,7 @@ config_init(const char *config_path)
     FILE* config;
     struct device_config *dev_config = NULL;
     char buf[1024];
-    char var_str[256];
+    char var_str[1024];
     char var_char;
     unsigned var_uint;
     int rc = -1, param_count = 0, i;
@@ -152,25 +159,43 @@ config_init(const char *config_path)
                 goto out;
             }
 
-            if (param_count >= CONFIG_MAX_SCAN_PARAMS) {
+            if (param_count >= CONFIG_SCAN_MAX_PARAMS) {
                 fprintf(stderr, "Error: too many scan.params. Max %d.\n",
-                        CONFIG_MAX_SCAN_PARAMS);
+                        CONFIG_SCAN_MAX_PARAMS);
                 goto out;
             }
 
-            for (i = 0; i < CONFIG_MAX_SCAN_PARAMS; ++i) {
+            for (i = 0; i < CONFIG_SCAN_MAX_PARAMS; ++i) {
                 if (dev_config->scan_params[i].id == var_char) {
                     strcpy(dev_config->scan_params[i].value, var_str);
                     break;
                 }
             }
 
-            if (i == CONFIG_MAX_SCAN_PARAMS) {
+            if (i == CONFIG_SCAN_MAX_PARAMS) {
                 fprintf(stderr, "Error: invalid scan.param type '%c'.\n", var_char);
                 goto out;
             }
 
             ++param_count;
+        } else if (sscanf((char *) buf, "scan.func %6s %1016s", var_str, var_str + 7) == 2) {
+            if (dev_config == NULL) {
+                fprintf(stderr, "Error: scan.param specified without a device.\n");
+                goto out;
+            }
+
+            for (i = 0; i < CONFIG_SCAN_MAX_FUNCS; ++i) {
+                if (strcmp(var_str, g_scan_func_str[i]) == 0) {
+                    break;
+                }
+            }
+
+            if (i == CONFIG_SCAN_MAX_FUNCS) {
+                fprintf(stderr, "Error: invalid scan.func type '%s'.\n", var_str);
+                goto out;
+            }
+
+            dev_config->scan_funcs[i] = strdup(var_str + 7);
         }
     }
 
