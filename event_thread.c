@@ -281,6 +281,8 @@ event_thread_lib_wait(void)
             return;
         }
     }
+
+    fflush(stdout);
 }
 
 static void *
