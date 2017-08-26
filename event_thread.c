@@ -159,7 +159,7 @@ event_thread_loop(void *arg)
             free(event);
         }
 
-        if (thread->update_cb) {
+        if (thread->state == EVENT_THREAD_RUNNING && thread->update_cb) {
             thread->update_cb(thread->arg);
         }
 
