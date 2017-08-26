@@ -11,6 +11,6 @@
 #include <stdlib.h>
 
 int snmp_get_printer_status(int conn, uint8_t *buf, size_t buf_len);
-int snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *functions[4]);
+int snmp_register_scanner_driver(int conn, bool enabled, uint8_t *buf, size_t buf_len, const char *functions[4]);
 
 #endif //BROTHER_SNMP_H

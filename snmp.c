@@ -8,6 +8,7 @@
 #include <memory.h>
 #include <stdio.h>
 #include <stdatomic.h>
+#include <stdbool.h>
 #include "ber/snmp.h"
 #include "network.h"
 #include "log.h"
@@ -16,6 +17,7 @@
 static atomic_int g_request_id;
 static uint32_t g_brInfoPrinterUStatusOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
 static uint32_t g_brRegisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 1, 0, SNMP_MSG_OID_END };
+static uint32_t g_brUnregisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 2, 0, SNMP_MSG_OID_END };
 
 static void
 init_msg_header(struct snmp_msg_header *msg_header, const char *community, enum snmp_data_type type)
@@ -69,7 +71,7 @@ out:
 }
 
 int
-snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *functions[4])
+snmp_register_scanner_driver(int conn, bool enabled, uint8_t *buf, size_t buf_len, const char **functions)
 {
     uint8_t *buf_end = buf + buf_len - 1;
 
@@ -88,7 +90,12 @@ snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *f
             break;
         }
 
-        memcpy(varbind[i].oid, g_brRegisterKeyInfoOID, sizeof(g_brRegisterKeyInfoOID));
+        if (enabled) {
+            memcpy(varbind[i].oid, g_brRegisterKeyInfoOID, sizeof(g_brRegisterKeyInfoOID));
+        } else {
+            memcpy(varbind[i].oid, g_brUnregisterKeyInfoOID, sizeof(g_brUnregisterKeyInfoOID));
+        }
+
         varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
         varbind[i].value.s = functions[i];
     }
@@ -106,6 +113,12 @@ snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *f
     msg_len = network_receive(conn, buf, buf_len);
     if (msg_len < 0) {
         perror("recvfrom");
+        goto out;
+    }
+
+    if (!enabled) {
+        /* unregister msg is not implemented for some scanners,
+         * ignore all errors */
         goto out;
     }
 

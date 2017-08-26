@@ -48,7 +48,7 @@ static struct device_handler g_dev_handler;
 static uint8_t g_buf[1024];
 
 static int
-register_scanner_host(struct device *dev)
+register_scanner_driver(struct device *dev, bool enabled)
 {
     const char *functions[4] = { 0 };
     char msg[CONFIG_SCAN_MAX_FUNCS][256];
@@ -82,7 +82,7 @@ register_scanner_host(struct device *dev)
         ++num_funcs;
     }
 
-    return snmp_register_scanner_host(dev->conn, g_buf, sizeof(g_buf), functions);
+    return snmp_register_scanner_driver(dev->conn, enabled, g_buf, sizeof(g_buf), functions);
 }
 
 struct device *
@@ -160,7 +160,7 @@ device_handler_loop(void *arg)
         if (difftime(time_now, dev->next_register_time) > 0) {
             /* only register once per DEVICE_REGISTER_DURATION_SEC */
             dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
-            register_scanner_host(dev);
+            register_scanner_driver(dev, true);
         }
     }
 
@@ -202,6 +202,7 @@ device_handler_stop(void *arg)
 
     while ((dev = TAILQ_FIRST(&g_dev_handler.devices))) {
         TAILQ_REMOVE(&g_dev_handler.devices, dev, tailq);
+        register_scanner_driver(dev, false);
         free(dev);
     }
 }
