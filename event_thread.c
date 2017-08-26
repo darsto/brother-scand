@@ -277,7 +277,7 @@ event_thread_lib_wait(void)
 
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
-        if (thread->state != EVENT_THREAD_STOPPED) {
+        if (thread->tid && thread->state != EVENT_THREAD_STOPPED) {
             pthread_join(thread->tid, NULL);
         }
     }
@@ -291,7 +291,7 @@ event_thread_lib_shutdown_cb(void *arg)
 
     for (i = 0; i < MAX_EVENT_THREADS; ++i) {
         thread = &g_threads[i];
-        if (thread->state != EVENT_THREAD_STOPPED) {
+        if (thread->tid && thread->state != EVENT_THREAD_STOPPED) {
             event_thread_stop(thread);
         }
     }
