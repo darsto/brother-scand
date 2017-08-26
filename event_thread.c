@@ -151,11 +151,6 @@ event_thread_loop(void *arg)
     struct event *event;
     sigset_t sigset;
 
-    if (signal(SIGUSR1, sig_handler) == SIG_ERR) {
-        fprintf(stderr, "%s: Failed to bind SIGUSR1 handler.\n", thread->name);
-        goto out;
-    }
-
     sigemptyset(&sigset);
 
     while (thread->state != EVENT_THREAD_STOPPED) {
@@ -177,7 +172,6 @@ event_thread_loop(void *arg)
         thread->stop_cb(thread->arg);
     }
 
-out:
     event_thread_destroy(thread);
     pthread_exit(NULL);
     return NULL;
@@ -267,6 +261,10 @@ void
 event_thread_lib_init(void)
 {
     atomic_init(&g_thread_cnt, 0);
+
+    if (signal(SIGUSR1, sig_handler) == SIG_ERR) {
+        fprintf(stderr, "Failed to bind SIGUSR1 handler.\n");
+    }
 }
 
 void
@@ -279,6 +277,8 @@ event_thread_lib_wait(void)
         thread = &g_threads[i];
         if (thread->tid && thread->state != EVENT_THREAD_STOPPED) {
             pthread_join(thread->tid, NULL);
+            event_thread_lib_wait();
+            return;
         }
     }
 }
