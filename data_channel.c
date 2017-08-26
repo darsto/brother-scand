@@ -660,7 +660,9 @@ data_channel_stop(void *arg)
         fclose(data_channel->tempfile);
     }
 
-    network_disconnect(data_channel->conn);
+	if (data_channel->conn >= 0) {
+    	network_disconnect(data_channel->conn);
+	}
 
     free(data_channel);
 }
