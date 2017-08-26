@@ -33,7 +33,7 @@ snmp_get_printer_status(int conn, uint8_t *buf, size_t buf_len)
     struct snmp_msg_header msg_header = {0};
     struct snmp_varbind varbind = {0};
     size_t snmp_len;
-    uint8_t *out, *dec_out;
+    uint8_t *out;
     int msg_len, rc = -1;
     uint32_t varbind_num = 1;
 
@@ -56,10 +56,11 @@ snmp_get_printer_status(int conn, uint8_t *buf, size_t buf_len)
         goto out;
     }
 
-    dec_out = snmp_decode_msg(buf, buf_len, &msg_header, &varbind_num, &varbind);
-    if (dec_out - buf != msg_len ||  varbind_num != 1) {
+    snmp_decode_msg(buf, buf_len, &msg_header, &varbind_num, &varbind);
+    if (msg_header.error_index != 0 && msg_header.error_status != 0) {
         fprintf(stderr, "Received invalid printer status SNMP response\n");
         hexdump("SNMP response", buf, (size_t) msg_len);
+        goto out;
     }
 
     rc = (int) varbind.value.i;
@@ -76,9 +77,9 @@ snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *f
     struct snmp_varbind varbind[CONFIG_SCAN_MAX_FUNCS] = {0};
     va_list args;
     size_t snmp_len;
-    int msg_len;
     uint8_t *out;
-    int i, rc = -1;
+    uint32_t i, varbind_num;
+    int msg_len, rc = -1;
 
     init_msg_header(&msg_header, "internal", SNMP_DATA_T_PDU_SET_REQUEST);
 
@@ -92,7 +93,8 @@ snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *f
         varbind[i].value.s = functions[i];
     }
 
-    out = snmp_encode_msg(buf_end, &msg_header, i, varbind);
+    varbind_num = i;
+    out = snmp_encode_msg(buf_end, &msg_header, varbind_num, varbind);
     snmp_len = buf_end - out + 1;
 
     msg_len = network_send(conn, out, snmp_len);
@@ -102,12 +104,20 @@ snmp_register_scanner_host(int conn, uint8_t *buf, size_t buf_len, const char *f
     }
 
     msg_len = network_receive(conn, buf, buf_len);
-    if (msg_len < 0 || (size_t) msg_len != snmp_len) {
+    if (msg_len < 0) {
         perror("recvfrom");
         goto out;
     }
 
+    snmp_decode_msg(buf, buf_len, &msg_header, &varbind_num, varbind);
+    if (msg_header.error_index != 0 && msg_header.error_status != 0) {
+        fprintf(stderr, "Received invalid register SNMP response\n");
+        hexdump("SNMP response", buf, (size_t) msg_len);
+        goto out;
+    }
+
     rc = msg_len;
+
 out:
     return rc;
 }
