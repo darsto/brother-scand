@@ -47,12 +47,61 @@ static atomic_int g_appnum;
 static struct device_handler g_dev_handler;
 static uint8_t g_buf[1024];
 
+static char
+digit_to_hex(int n)
+{
+    const char *trans_table = "0123456789ABCDEF";
+
+    return trans_table[n & 0xf];
+}
+
+static int
+encode_password(const char *pass, char *buf)
+{
+    const uint8_t g_pass_shuffle_table[] = {
+        0x05, 0x0A, 0x1F, 0x18, 0x08, 0x1E, 0x1C, 0x01,
+        0x11, 0x0D, 0x0C, 0x0E, 0x1B, 0x03, 0x15, 0x16,
+        0x1D, 0x14, 0x00, 0x07, 0x10, 0x0B, 0x19, 0x04,
+        0x13, 0x12, 0x06, 0x1A, 0x09, 0x02, 0x0F, 0x17
+    };
+    const uint8_t g_pass_key[] = { 0xCA, 0xFE, 0x28, 0xA9 };
+    uint8_t tmp_buf[32] = {0};
+    char tmp;
+    int i, j;
+
+    for (i = 0; i < 4; ++i) {
+        tmp = pass[i];
+        for (j = 0; j < 8; ++j) {
+            tmp_buf[g_pass_shuffle_table[8 * i + j] >> 3] |= ((tmp & 1) << (g_pass_shuffle_table[8 * i + j] & 7));
+            tmp >>= 1;
+        }
+    }
+
+    for (i = 0; i < 4; ++i) {
+        tmp_buf[i] ^= g_pass_key[i];
+    }
+
+    for (i = 0; i < 4; ++i) {
+        *buf++ = digit_to_hex((unsigned char) tmp_buf[i] >> 4);
+        *buf++ = digit_to_hex(tmp_buf[i] & 0xF);
+    }
+
+    *buf = 0;
+
+    return 0;
+}
+
 static int
 register_scanner_driver(struct device *dev, bool enabled)
 {
     const char *functions[4] = { 0 };
     char msg[CONFIG_SCAN_MAX_FUNCS][256];
+    char pass_buf[9] = { 0 };
     int num_funcs = 0, i, rc;
+
+    if (dev->config->password != NULL && strlen(dev->config->password) == 4) {
+        encode_password(dev->config->password, pass_buf);
+    }
 
     for (i = 0; i < CONFIG_SCAN_MAX_FUNCS; ++i) {
         if (dev->config->scan_funcs[i] == NULL) {
@@ -67,12 +116,14 @@ register_scanner_driver(struct device *dev, bool enabled)
                           "HOST=%s:%d;"
                           "APPNUM=%d;"
                           "DURATION=%d;"
+                          "BRID=%s;"
                           "CC=1;",
                       g_config.hostname,
                       g_scan_func_str[i],
                       g_config.local_ip, BUTTON_HANDLER_PORT,
                       atomic_fetch_add(&g_appnum, 1),
-                      DEVICE_REGISTER_DURATION_SEC);
+                      DEVICE_REGISTER_DURATION_SEC,
+                      pass_buf);
 
         if (rc < 0 || rc == 255) {
             return -1;

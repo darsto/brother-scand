@@ -26,7 +26,8 @@ struct scan_param {
 };
 
 struct device_config {
-    const char *ip;
+    char *ip;
+    char *password;
     unsigned timeout;
     unsigned page_init_retries;
     unsigned page_finish_retries;

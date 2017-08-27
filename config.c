@@ -139,6 +139,13 @@ config_init(const char *config_path)
             }
 
             dev_config->timeout = var_uint;
+        } else if (sscanf((char *) buf, "password %4s", var_str) == 1) {
+            if (dev_config == NULL) {
+                fprintf(stderr, "Error: password specified without a device.\n");
+                goto out;
+            }
+
+            dev_config->password = strdup(var_str);
         } else if (sscanf((char *) buf, "network.page.init.retry %u", &var_uint) == 1) {
             if (dev_config == NULL) {
                 fprintf(stderr, "Error: network.page.init.retry specified without a device.\n");
