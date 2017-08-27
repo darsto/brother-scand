@@ -1,6 +1,6 @@
 # Brother scanner network driver
 
-![Status](https://img.shields.io/badge/status-unstable-orange.svg)
+![Status](https://img.shields.io/badge/status-stable-green.svg)
 [![License](https://img.shields.io/github/license/darsto/brother-scanner-driver.svg)](LICENSE.md)
 
 Functional userspace driver for Brother scanners.
