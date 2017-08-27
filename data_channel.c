@@ -104,11 +104,17 @@ read_scan_params(struct data_channel *data_channel, uint8_t *buf, uint8_t *buf_e
 
     while (buf < buf_end) {
         id = *buf++;
-        assert(*buf == '=');
+        if (*buf != '=') {
+            fprintf(stderr, "Received invalid scan param (missing '=' sign).\n");
+            return -1;
+        }
         ++buf;
 
         param = get_scan_param_by_id(data_channel, id);
-        assert(param != NULL);
+        if (param == NULL) {
+            fprintf(stderr, "Received invalid scan param (unknown id '%c').\n", id);
+            return -1;
+        }
 
         i = 0;
         while (*buf != 0x0a) {
@@ -433,14 +439,29 @@ exchange_params2(struct data_channel *data_channel)
     }
 
     /* process received data */
-    assert(data_channel->buf[0] == 0x00); // ??
-    if (data_channel->buf[1] != msg_len - 3) {
-        fprintf(stderr, "data_channel %d: invalid second handshake packet header.\n",
-                data_channel->conn);
+    if (data_channel->buf[0] != 0x00) {
+        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid first byte '%c').\n",
+                data_channel->conn, data_channel->buf[0]);
         return -1;
     }
-    assert(data_channel->buf[2] == 0x00); // ??
-    assert(data_channel->buf[msg_len - 1] == 0x00);
+
+    if (data_channel->buf[1] != msg_len - 3) {
+        fprintf(stderr, "data_channel %d: invalid second exchange params msg (invalid length '%c').\n",
+                data_channel->conn, data_channel->buf[1]);
+        return -1;
+    }
+
+    if (data_channel->buf[2] != 0x00) {
+        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid third byte '%c').\n",
+                data_channel->conn, data_channel->buf[2]);
+        return -1;
+    }
+
+    if (data_channel->buf[msg_len - 1] != 0x00) {
+        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid last byte '%c').\n",
+                data_channel->conn, data_channel->buf[msg_len - 1]);
+        return -1;
+    }
 
     i = 0;
     buf_end = buf = data_channel->buf + 3;
@@ -452,7 +473,11 @@ exchange_params2(struct data_channel *data_channel)
     }
 
     len = buf_end - data_channel->buf - 4;
-    assert(len < 15);
+    if (len > 15) {
+        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid dpi length '%zu').\n",
+                data_channel->conn, len);
+    }
+
     param = get_scan_param_by_id(data_channel, 'R');
     assert(param);
 
@@ -465,14 +490,24 @@ exchange_params2(struct data_channel *data_channel)
         param->value[len] = 0;
     }
 
-    while(i < sizeof(recv_params) / sizeof(recv_params[0]) && *buf_end != 0x00) {
+    while(i < sizeof(recv_params) / sizeof(recv_params[0])) {
         tmp = strtol((char *) buf, (char **) &buf_end, 10);
-        assert(tmp > 0 && tmp < USHRT_MAX);
+        if (buf_end == buf || *buf_end != 0 ||
+            ((tmp == LONG_MIN || tmp == LONG_MAX) && errno == ERANGE)) {
+            fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid params').\n",
+                    data_channel->conn);
+            return -1;
+        }
+
         recv_params[i++] = tmp;
         buf = ++buf_end;
     }
 
-    assert(*buf == 0x00);
+    if (*buf != 0x00) {
+        fprintf(stderr, "data_channel %d: received invalid exchange params msg (message too long).\n",
+                data_channel->conn);
+        return -1;
+    }
 
     param = get_scan_param_by_id(data_channel, 'A');
     assert(param);
@@ -508,7 +543,6 @@ exchange_params2(struct data_channel *data_channel)
     return 0;
 }
 
-// TODO replace asserts with errors (its actually user input that's being handled)
 static int
 exchange_params1(struct data_channel *data_channel)
 {
@@ -526,12 +560,29 @@ exchange_params1(struct data_channel *data_channel)
     }
 
     /* process received data */
-    assert(data_channel->buf[0] == 0x30); // ??
+    if (data_channel->buf[0] != 0x30) {
+        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid first byte '%c').\n",
+                data_channel->conn, data_channel->buf[0]);
+        return -1;
+    }
     //buf[1] == 0x15 or 0x55 (might refer to automatic/manual scan)
-    assert(data_channel->buf[2] == 0x00); // ??
+    if (data_channel->buf[2] != 0x30) {
+        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid third byte '%c').\n",
+                data_channel->conn, data_channel->buf[2]);
+        return -1;
+    }
 
-    assert(data_channel->buf[msg_len - 1] == 0x80); // end of message
-    assert(data_channel->buf[msg_len - 2] == 0x0a); // end of param
+    if (data_channel->buf[msg_len - 2] != 0x0a) { //end of param
+        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid second-last byte '%c').\n",
+                data_channel->conn, data_channel->buf[msg_len - 2]);
+        return -1;
+    }
+
+    if (data_channel->buf[msg_len - 1] != 0x80) { //end of message
+        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid last byte '%c').\n",
+                data_channel->conn, data_channel->buf[msg_len - 1]);
+        return -1;
+    }
 
     buf = data_channel->buf + 3;
     buf_end = data_channel->buf + msg_len - 2;
