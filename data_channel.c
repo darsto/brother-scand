@@ -409,6 +409,7 @@ receive_initial_data(struct data_channel *data_channel)
     if (rc != 0) {
         fprintf(stderr, "Couldn't process initial data packet on data_channel %d\n", data_channel->conn);
         fclose(data_channel->tempfile);
+        data_channel->tempfile = NULL;
         return -1;
     }
 
@@ -681,6 +682,7 @@ data_channel_loop(void *arg)
 
         if (data_channel->tempfile) {
             fclose(data_channel->tempfile);
+            data_channel->tempfile = NULL;
         }
 
         data_channel_pause(data_channel);
@@ -694,6 +696,7 @@ data_channel_stop(void *arg)
 
     if (data_channel->tempfile) {
         fclose(data_channel->tempfile);
+        data_channel->tempfile = NULL;
     }
 
 	if (data_channel->conn >= 0) {
