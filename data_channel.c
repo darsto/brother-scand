@@ -555,11 +555,7 @@ exchange_params1(struct data_channel *data_channel)
         return -1;
     }
     //buf[1] == 0x15 or 0x55 (might refer to automatic/manual scan)
-    if (data_channel->buf[2] != 0x30) {
-        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid third byte '%c').\n",
-                data_channel->conn, data_channel->buf[2]);
-        return -1;
-    }
+    //buf[2] == 0x30 or 0x00 ??
 
     if (data_channel->buf[msg_len - 2] != 0x0a) { //end of param
         fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid second-last byte '%c').\n",
