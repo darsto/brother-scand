@@ -262,6 +262,12 @@ process_header(struct data_channel *data_channel, uint8_t *buf, uint32_t buf_len
     uint32_t payload_len;
     int rc;
 
+    if (buf_len == 1) {
+        fprintf(stderr, "data_channel %d: device unavailable (error code %u)\n",
+                data_channel->conn, buf[0]);
+        return -1;
+    }
+
     if (buf_len < 10) {
         fprintf(stderr, "data_channel %d: invalid header length (%u/10+ bytes)\n",
                 data_channel->conn, buf_len);
