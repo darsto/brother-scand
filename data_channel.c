@@ -466,35 +466,11 @@ exchange_params2(struct data_channel *data_channel)
     i = 0;
     buf_end = buf = data_channel->buf + 3;
 
-    /* process dpi x and y */
-    while(i < 2 && *buf_end != 0x00) {
-        recv_params[i++] = strtol((char *) buf, (char **) &buf_end, 10);
-        buf = ++buf_end;
-    }
-
-    len = buf_end - data_channel->buf - 4;
-    if (len > 15) {
-        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid dpi length '%zu').\n",
-                data_channel->conn, len);
-    }
-
-    param = get_scan_param_by_id(data_channel, 'R');
-    assert(param);
-
-    /* previously sent and just received dpi should match */
-    if (strncmp((char *) (data_channel->buf + 3), param->value, len) != 0) {
-        printf("Scanner does not support given dpi: %s. %.*s will be used instead\n",
-               param->value, (int) len, (char *) (data_channel->buf + 3));
-
-        memcpy(param->value, data_channel->buf + 3, len);
-        param->value[len] = 0;
-    }
-
     while(i < sizeof(recv_params) / sizeof(recv_params[0])) {
         tmp = strtol((char *) buf, (char **) &buf_end, 10);
-        if (buf_end == buf || *buf_end != 0 ||
+        if (buf_end == buf || *buf_end != ',' ||
             ((tmp == LONG_MIN || tmp == LONG_MAX) && errno == ERANGE)) {
-            fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid params').\n",
+            fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid params).\n",
                     data_channel->conn);
             return -1;
         }
@@ -507,6 +483,19 @@ exchange_params2(struct data_channel *data_channel)
         fprintf(stderr, "data_channel %d: received invalid exchange params msg (message too long).\n",
                 data_channel->conn);
         return -1;
+    }
+
+    param = get_scan_param_by_id(data_channel, 'R');
+    assert(param);
+
+    /* previously sent and just received dpi should match */
+    sprintf((char *) data_channel->buf, "%ld,%ld", recv_params[0], recv_params[1]);
+    if (strncmp((char *) (data_channel->buf), param->value, sizeof(param->value)) != 0) {
+        printf("Scanner does not support given dpi: %s. %s will be used instead\n",
+               param->value, (char *) (data_channel->buf));
+
+        strncpy(param->value, (const char *) data_channel->buf, sizeof(param->value));
+        param->value[sizeof(param->value)] = 0;
     }
 
     param = get_scan_param_by_id(data_channel, 'A');
