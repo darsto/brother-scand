@@ -30,18 +30,6 @@ struct network_conn {
 static atomic_int g_conn_count;
 static struct network_conn g_conns[MAX_NETWORK_CONNECTIONS];
 
-static struct network_conn *
-get_network_conn(int conn_id)
-{
-    struct network_conn *conn = NULL;
-
-    if ((unsigned) conn_id < MAX_NETWORK_CONNECTIONS) {
-        conn = &g_conns[conn_id];
-    }
-
-    return conn;
-}
-
 static int
 create_socket(struct network_conn *conn, unsigned timeout_sec)
 {
@@ -79,7 +67,7 @@ create_socket(struct network_conn *conn, unsigned timeout_sec)
     return 0;
 }
 
-int
+struct network_conn *
 network_open(enum network_type type, unsigned timeout_sec)
 {
     int conn_id;
@@ -90,19 +78,15 @@ network_open(enum network_type type, unsigned timeout_sec)
 
     conn->type = type;
     if (create_socket(conn, timeout_sec) != 0) {
-        return -1;
+        return NULL;
     }
 
-    return conn_id;
+    return conn;
 }
 
 int
-network_bind(int conn_id, in_port_t local_port)
+network_bind(struct network_conn *conn, in_port_t local_port)
 {
-    struct network_conn *conn;
-
-    conn = get_network_conn(conn_id);
-
     conn->sin_me.sin_family = AF_INET;
     conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
     conn->sin_me.sin_port = local_port;
@@ -116,22 +100,19 @@ network_bind(int conn_id, in_port_t local_port)
 }
 
 int
-network_reconnect(int conn_id, in_addr_t dest_addr, in_port_t dest_port)
+network_reconnect(struct network_conn *conn, in_addr_t dest_addr, in_port_t dest_port)
 {
-    struct network_conn *conn;
     int retries;
 
-    conn = get_network_conn(conn_id);
-
     if (conn->connected) {
-        network_close(conn_id);
+        network_close(conn);
 
         if (create_socket(conn, (unsigned) conn->timeout.tv_sec) != 0) {
             return -1;
         }
 
         if (conn->sin_me.sin_port &&
-            network_bind(conn_id, conn->sin_me.sin_port) != 0) {
+            network_bind(conn, conn->sin_me.sin_port) != 0) {
             return -1;
         }
     }
@@ -162,13 +143,11 @@ network_reconnect(int conn_id, in_addr_t dest_addr, in_port_t dest_port)
 }
 
 int
-network_send(int conn_id, const void *buf, size_t len)
+network_send(struct network_conn *conn, const void *buf, size_t len)
 {
-    struct network_conn *conn;
     ssize_t sent_bytes;
     char hexdump_line[64];
 
-    conn = get_network_conn(conn_id);
     if (conn->type == NETWORK_TYPE_UDP) {
         sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth,
                             sizeof(conn->sin_oth));
@@ -188,15 +167,13 @@ network_send(int conn_id, const void *buf, size_t len)
 }
 
 int
-network_receive(int conn_id, void *buf, size_t len)
+network_receive(struct network_conn *conn, void *buf, size_t len)
 {
-    struct network_conn *conn;
     ssize_t recv_bytes;
     struct sockaddr_in sin_oth_tmp;
     socklen_t slen;
     char hexdump_line[64];
 
-    conn = get_network_conn(conn_id);
     slen = sizeof(sin_oth_tmp);
 
     if (conn->type == NETWORK_TYPE_UDP) {
@@ -224,12 +201,9 @@ network_receive(int conn_id, void *buf, size_t len)
 }
 
 int
-network_get_client_ip(int conn_id, char ip[16])
+network_get_client_ip(struct network_conn *conn, char ip[16])
 {
-    struct network_conn *conn;
     const char *ret;
-
-    conn = get_network_conn(conn_id);
 
     ret = inet_ntop(AF_INET, &conn->sin_oth.sin_addr, ip, 16);
     return ret != NULL ? 0 : -1;
@@ -237,11 +211,8 @@ network_get_client_ip(int conn_id, char ip[16])
 
 
 int
-network_close(int conn_id)
+network_close(struct network_conn *conn)
 {
-    struct network_conn *conn;
-
-    conn = get_network_conn(conn_id);
     close(conn->fd);
     conn->connected = false;
     return 0;

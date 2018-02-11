@@ -29,7 +29,7 @@ init_msg_header(struct snmp_msg_header *msg_header, const char *community, enum 
 }
 
 int
-snmp_get_printer_status(int conn, uint8_t *buf, size_t buf_len)
+snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len)
 {
     uint8_t *buf_end = buf + buf_len - 1;
     struct snmp_msg_header msg_header = {0};
@@ -71,7 +71,7 @@ out:
 }
 
 int
-snmp_register_scanner_driver(int conn, bool enabled, uint8_t *buf, size_t buf_len, const char **functions)
+snmp_register_scanner_driver(struct network_conn *conn, bool enabled, uint8_t *buf, size_t buf_len, const char **functions)
 {
     uint8_t *buf_end = buf + buf_len - 1;
 

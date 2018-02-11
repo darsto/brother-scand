@@ -25,7 +25,7 @@
 #define DATA_CHANNEL_TARGET_PORT 54921
 
 struct data_channel {
-    int conn;
+    struct network_conn *conn;
     int (*process_cb)(struct data_channel *data_channel);
 
     FILE *tempfile;
@@ -67,7 +67,7 @@ set_paused(struct data_channel *data_channel)
 static void
 data_channel_pause(struct data_channel *data_channel)
 {
-    printf("data_channel %d: going to sleep.\n", data_channel->conn);
+    printf("data_channel %s: going to sleep.\n", data_channel->config->ip);
     data_channel->process_cb = set_paused;
 }
 
@@ -175,15 +175,16 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
     int i, rc;
 
     if (header->page_id != data_channel->page_data.id) {
-        fprintf(stderr, "data_channel %d: packet page_id mismatch (packet %u != local %u)\n",
-                data_channel->conn, header->page_id, data_channel->scanned_pages + 1);
+        fprintf(stderr, "data_channel %s: packet page_id mismatch (packet %u != local %u)\n",
+                data_channel->config->ip, header->page_id, data_channel->scanned_pages + 1);
         return -1;
     }
 
     sprintf(filename, "scan%u.jpg", data_channel->scanned_pages++);
     destfile = fopen(filename, "w");
     if (destfile == NULL) {
-        fprintf(stderr, "Cannot create file '%s' on data_channel %d\n", filename, data_channel->conn);
+        fprintf(stderr, "Cannot create file '%s' on data_channel %s\n", filename,
+                data_channel->config->ip);
         return -1;
     }
 
@@ -197,7 +198,8 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
     data_channel->tempfile = NULL;
 
     data_channel->process_cb = receive_initial_data;
-    printf("data_channel %d: successfully received page %u\n", data_channel->conn, header->page_id);
+    printf("data_channel %s: successfully received page %u\n", data_channel->config->ip,
+           header->page_id);
 
     param = get_scan_param_by_id(data_channel, 'F');
     for (i = 0; i < CONFIG_SCAN_MAX_FUNCS; ++i) {
@@ -209,8 +211,8 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
     rc = snprintf((char *) data_channel->buf, sizeof(data_channel->buf), "%s %s %s",
              data_channel->config->scan_funcs[i], data_channel->config->ip, filename);
     if (rc < 0 || rc == sizeof(data_channel->buf)) {
-        fprintf(stderr, "data_channel %d: couldn't execute user hook. snprintf failed: %d\n",
-                data_channel->conn, errno);
+        fprintf(stderr, "data_channel %s: couldn't execute user hook. snprintf failed: %d\n",
+                data_channel->config->ip, errno);
         return -1;
     }
 
@@ -227,28 +229,30 @@ process_chunk_header(struct data_channel *data_channel, struct data_packet_heade
     int total_chunk_size;
 
     if (payload_len < 2) {
-        fprintf(stderr, "data_channel %d: payload too small (%u/2 bytes)\n",
-                data_channel->conn, payload_len);
+        fprintf(stderr, "data_channel %s: payload too small (%u/2 bytes)\n",
+                data_channel->config->ip, payload_len);
         return -1;
     }
 
     if (data_channel->page_data.id == 0) {
-        printf("data_channel %d: now scanning page id %u\n", data_channel->conn, header->page_id);
+        printf("data_channel %s: now scanning page id %u\n", data_channel->config->ip,
+               header->page_id);
         data_channel->page_data.id = header->page_id;
     } else if (header->page_id != data_channel->page_data.id) {
-        fprintf(stderr, "data_channel %d: packet page_id mismatch (packet %u != local %u)\n",
-                data_channel->conn, header->page_id, data_channel->page_data.id);
+        fprintf(stderr, "data_channel %s: packet page_id mismatch (packet %u != local %u)\n",
+                data_channel->config->ip, header->page_id, data_channel->page_data.id);
         return -1;
     }
 
     progress_percent = header->progress * 100 / DATA_CHANNEL_CHUNK_MAX_PROGRESS;
-    printf("data_channel %d: Receiving data: %d%%\n", data_channel->conn, progress_percent);
+    printf("data_channel %s: Receiving data: %d%%\n", data_channel->config->ip,
+           progress_percent);
 
     data_channel->page_data.remaining_chunk_bytes = header->payload[0] | (header->payload[1] << 8);
     total_chunk_size = data_channel->page_data.remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
 
     if (total_chunk_size > DATA_CHANNEL_CHUNK_MAX_SIZE) {
-        fprintf(stderr, "Invalid chunk size on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Invalid chunk size on data_channel %s\n", data_channel->config->ip);
         return -1;
     }
 
@@ -263,14 +267,14 @@ process_header(struct data_channel *data_channel, uint8_t *buf, uint32_t buf_len
     int rc;
 
     if (buf_len == 1) {
-        fprintf(stderr, "data_channel %d: device unavailable (error code %u)\n",
-                data_channel->conn, buf[0]);
+        fprintf(stderr, "data_channel %s: device unavailable (error code %u)\n",
+                data_channel->config->ip, buf[0]);
         return -1;
     }
 
     if (buf_len < 10) {
-        fprintf(stderr, "data_channel %d: invalid header length (%u/10+ bytes)\n",
-                data_channel->conn, buf_len);
+        fprintf(stderr, "data_channel %s: invalid header length (%u/10+ bytes)\n",
+                data_channel->config->ip, buf_len);
         return -1;
     }
 
@@ -284,8 +288,8 @@ process_header(struct data_channel *data_channel, uint8_t *buf, uint32_t buf_len
     payload_len = buf_len - 10;
 
     if (header.magic != 0x07) {
-        fprintf(stderr, "data_channel %d: invalid header magic number (%u != 0x07)\n",
-                data_channel->conn, header.magic);
+        fprintf(stderr, "data_channel %s: invalid header magic number (%u != 0x07)\n",
+                data_channel->config->ip, header.magic);
         return -1;
     }
 
@@ -300,8 +304,8 @@ process_header(struct data_channel *data_channel, uint8_t *buf, uint32_t buf_len
             }
             break;
         default:
-            fprintf(stderr, "data_channel %d: received unsupported header (id = %u)\n",
-                    data_channel->conn, header.id);
+            fprintf(stderr, "data_channel %s: received unsupported header (id = %u)\n",
+                    data_channel->config->ip, header.id);
             rc = -1;
     }
 
@@ -333,7 +337,8 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
         if (rc == 1) {
             return 0;
         } else if (rc != 0) {
-            fprintf(stderr, "Couldn't parse header on data_channel %d\n", data_channel->conn);
+            fprintf(stderr, "Couldn't parse header on data_channel %s\n",
+                    data_channel->config->ip);
             return -1;
         }
 
@@ -366,13 +371,15 @@ receive_data(struct data_channel *data_channel)
     }
 
     if (retries == 0) {
-        fprintf(stderr, "Couldn't receive data packet on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't receive data packet on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
     rc = process_data(data_channel, data_channel->buf, msg_len);
     if (rc != 0) {
-        fprintf(stderr, "Couldn't process data packet on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't process data packet on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -407,13 +414,15 @@ receive_initial_data(struct data_channel *data_channel)
     data_channel_reset_page_data(data_channel);
     data_channel->tempfile = tmpfile();
     if (data_channel->tempfile == NULL) {
-        fprintf(stderr, "Cannot create temp file on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Cannot create temp file on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
     rc = process_data(data_channel, data_channel->buf, msg_len);
     if (rc != 0) {
-        fprintf(stderr, "Couldn't process initial data packet on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't process initial data packet on data_channel %s\n",
+                data_channel->config->ip);
         fclose(data_channel->tempfile);
         data_channel->tempfile = NULL;
         return -1;
@@ -441,32 +450,33 @@ exchange_params2(struct data_channel *data_channel)
     }
 
     if (retries == 2) {
-        fprintf(stderr, "Couldn't receive scan params on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't receive scan params on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
     /* process received data */
     if (data_channel->buf[0] != 0x00) {
-        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid first byte '%c').\n",
-                data_channel->conn, data_channel->buf[0]);
+        fprintf(stderr, "data_channel %s: received invalid exchange params msg (invalid first byte '%c').\n",
+                data_channel->config->ip, data_channel->buf[0]);
         return -1;
     }
 
     if (data_channel->buf[1] != msg_len - 3) {
-        fprintf(stderr, "data_channel %d: invalid second exchange params msg (invalid length '%c').\n",
-                data_channel->conn, data_channel->buf[1]);
+        fprintf(stderr, "data_channel %s: invalid second exchange params msg (invalid length '%c').\n",
+                data_channel->config->ip, data_channel->buf[1]);
         return -1;
     }
 
     if (data_channel->buf[2] != 0x00) {
-        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid third byte '%c').\n",
-                data_channel->conn, data_channel->buf[2]);
+        fprintf(stderr, "data_channel %s: received invalid exchange params msg (invalid third byte '%c').\n",
+                data_channel->config->ip, data_channel->buf[2]);
         return -1;
     }
 
     if (data_channel->buf[msg_len - 1] != 0x00) {
-        fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid last byte '%c').\n",
-                data_channel->conn, data_channel->buf[msg_len - 1]);
+        fprintf(stderr, "data_channel %s: received invalid exchange params msg (invalid last byte '%c').\n",
+                data_channel->config->ip, data_channel->buf[msg_len - 1]);
         return -1;
     }
 
@@ -477,8 +487,8 @@ exchange_params2(struct data_channel *data_channel)
         tmp = strtol((char *) buf, (char **) &buf_end, 10);
         if (buf_end == buf || *buf_end != ',' ||
             ((tmp == LONG_MIN || tmp == LONG_MAX) && errno == ERANGE)) {
-            fprintf(stderr, "data_channel %d: received invalid exchange params msg (invalid params).\n",
-                    data_channel->conn);
+            fprintf(stderr, "data_channel %s: received invalid exchange params msg (invalid params).\n",
+                    data_channel->config->ip);
             return -1;
         }
 
@@ -487,8 +497,8 @@ exchange_params2(struct data_channel *data_channel)
     }
 
     if (*buf != 0x00) {
-        fprintf(stderr, "data_channel %d: received invalid exchange params msg (message too long).\n",
-                data_channel->conn);
+        fprintf(stderr, "data_channel %s: received invalid exchange params msg (message too long).\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -517,7 +527,8 @@ exchange_params2(struct data_channel *data_channel)
 
     buf = write_scan_params(data_channel, buf, "RMCJBNADGL");
     if (buf == NULL) {
-        fprintf(stderr, "Failed to write scan params on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Failed to write scan params on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -531,7 +542,8 @@ exchange_params2(struct data_channel *data_channel)
     }
 
     if (retries == 2) {
-        fprintf(stderr, "Couldn't send scan params on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't send scan params on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -550,29 +562,29 @@ exchange_params1(struct data_channel *data_channel)
 
     msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
     if (msg_len < 0) {
-        fprintf(stderr, "Couldn't receive initial scan params on data_channel %d\n",
-                data_channel->conn);
+        fprintf(stderr, "Couldn't receive initial scan params on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
     /* process received data */
     if (data_channel->buf[0] != 0x30) {
-        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid first byte '%c').\n",
-                data_channel->conn, data_channel->buf[0]);
+        fprintf(stderr, "data_channel %s: received invalid initial exchange params msg (invalid first byte '%c').\n",
+                data_channel->config->ip, data_channel->buf[0]);
         return -1;
     }
     //buf[1] == 0x15 or 0x55 (might refer to automatic/manual scan)
     //buf[2] == 0x30 or 0x00 ??
 
     if (data_channel->buf[msg_len - 2] != 0x0a) { //end of param
-        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid second-last byte '%c').\n",
-                data_channel->conn, data_channel->buf[msg_len - 2]);
+        fprintf(stderr, "data_channel %s: received invalid initial exchange params msg (invalid second-last byte '%c').\n",
+                data_channel->config->ip, data_channel->buf[msg_len - 2]);
         return -1;
     }
 
     if (data_channel->buf[msg_len - 1] != 0x80) { //end of message
-        fprintf(stderr, "data_channel %d: received invalid initial exchange params msg (invalid last byte '%c').\n",
-                data_channel->conn, data_channel->buf[msg_len - 1]);
+        fprintf(stderr, "data_channel %s: received invalid initial exchange params msg (invalid last byte '%c').\n",
+                data_channel->config->ip, data_channel->buf[msg_len - 1]);
         return -1;
     }
 
@@ -580,7 +592,8 @@ exchange_params1(struct data_channel *data_channel)
     buf_end = data_channel->buf + msg_len - 2;
 
     if (read_scan_params(data_channel, buf, buf_end, NULL) != 0) {
-        fprintf(stderr, "Failed to process initial scan params on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Failed to process initial scan params on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -588,7 +601,8 @@ exchange_params1(struct data_channel *data_channel)
     if (strchr(param->value, ',') == NULL) {
         str_len = strlen(param->value);
         if (str_len >= sizeof(param->value) - 1) {
-            fprintf(stderr, "data_channel %d: received invalid resolution %s\n", data_channel->conn, param->value);
+            fprintf(stderr, "data_channel %s: received invalid resolution %s\n",
+                    data_channel->config->ip, param->value);
             return -1;
         }
 
@@ -604,8 +618,8 @@ exchange_params1(struct data_channel *data_channel)
     }
 
     if (i == CONFIG_SCAN_MAX_FUNCS) {
-        fprintf(stderr, "data_channel %d: received invalid scan function %s.\n",
-                data_channel->conn, param->value);
+        fprintf(stderr, "data_channel %s: received invalid scan function %s.\n",
+                data_channel->config->ip, param->value);
         return -1;
     }
 
@@ -617,7 +631,8 @@ exchange_params1(struct data_channel *data_channel)
 
     buf = write_scan_params(data_channel, buf, "RMD");
     if (buf == NULL) {
-        fprintf(stderr, "Failed to write initial scan params on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Failed to write initial scan params on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -625,7 +640,8 @@ exchange_params1(struct data_channel *data_channel)
 
     msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
     if (msg_len < 0) {
-        fprintf(stderr, "Couldn't send initial scan params on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't send initial scan params on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -646,18 +662,21 @@ init_connection(struct data_channel *data_channel)
 
     msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
     if (msg_len < 0) {
-        fprintf(stderr, "Couldn't receive welcome message on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't receive welcome message on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
     if (data_channel->buf[0] != '+') {
-        fprintf(stderr, "Received invalid welcome message on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Received invalid welcome message on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
     msg_len = network_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
     if (msg_len < 0) {
-        fprintf(stderr, "Couldn't send welcome message on data_channel %d\n", data_channel->conn);
+        fprintf(stderr, "Couldn't send welcome message on data_channel %s\n",
+                data_channel->config->ip);
         return -1;
     }
 
@@ -673,8 +692,8 @@ data_channel_loop(void *arg)
 
     rc = data_channel->process_cb(data_channel);
     if (rc != 0) {
-        fprintf(stderr, "data_channel %d: failed to process data. The channel will be closed.\n",
-                data_channel->conn);
+        fprintf(stderr, "data_channel %s: failed to process data. The channel will be closed.\n",
+                data_channel->config->ip);
 
         if (data_channel->tempfile) {
             fclose(data_channel->tempfile);
@@ -706,7 +725,7 @@ init_data_channel(struct data_channel *data_channel)
     data_channel->process_cb = set_paused;
 
     data_channel->conn = network_open(NETWORK_TYPE_TCP, data_channel->config->timeout);
-    if (data_channel->conn < 0) {
+    if (data_channel->conn == NULL) {
         fprintf(stderr, "Failed to init a data_channel.\n");
         event_thread_stop(data_channel->thread);
         return 0;
@@ -731,7 +750,8 @@ data_channel_kick_cb(void *arg1, void *arg2)
     struct data_channel *data_channel = arg1;
 
     if (data_channel->process_cb != set_paused) {
-        fprintf(stderr, "Trying to kick non-sleeping data_channel %d.\n", data_channel->conn);
+        fprintf(stderr, "Trying to kick non-sleeping data_channel %s.\n",
+                data_channel->config->ip);
         return;
     }
 
@@ -757,7 +777,8 @@ data_channel_kick(struct data_channel *data_channel)
     return;
 
 err:
-    fprintf(stderr, "Failed to kick data_channel %d.\n", data_channel->conn);
+    fprintf(stderr, "Failed to kick data_channel %s.\n",
+            data_channel->config->ip);
 }
 
 struct data_channel *

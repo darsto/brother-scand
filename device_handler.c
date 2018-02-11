@@ -26,7 +26,7 @@
 #define SNMP_PORT 161
 
 struct device {
-    int conn;
+    struct network_conn *conn;
     struct data_channel *channel;
     int status;
     time_t next_ping_time;
@@ -36,7 +36,7 @@ struct device {
 };
 
 struct device_handler {
-    int button_conn;
+    struct network_conn *button_conn;
     struct event_thread *thread;
     TAILQ_HEAD(, device) devices;
 };
@@ -140,10 +140,11 @@ struct device *
 device_handler_add_device(struct device_config *config)
 {
     struct device *dev;
-    int conn, status, i;
+    struct network_conn *conn;
+    int status, i;
 
     conn = network_open(NETWORK_TYPE_UDP, config->timeout);
-    if (conn < 0) {
+    if (conn == NULL) {
         fprintf(stderr, "Could not init a connection for device %s.\n", config->ip);
         return NULL;
     }
@@ -286,7 +287,7 @@ device_handler_init(const char *config_path)
     }
 
     g_dev_handler.button_conn = network_open(NETWORK_TYPE_UDP, BUTTON_HANDLER_NETWORK_TIMEOUT);
-    if (g_dev_handler.button_conn < 0) {
+    if (g_dev_handler.button_conn == NULL) {
         fprintf(stderr, "Fatal: Could not setup button handler connection at %s.\n",
                 g_config.local_ip);
         return;
