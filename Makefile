@@ -10,9 +10,9 @@ LDFLAGS = -pthread
 SOURCES = main.c con_queue.c log.c device_handler.c event_thread.c config.c network.c \
 	data_channel.c snmp.c
 SOURCES += ber/ber.c ber/snmp.c
-OBJECTS = $(SOURCES:.c=.o)
+OBJECTS = $(patsubst %.c, build/%.o, $(SOURCES))
 DEPS := $(OBJECTS:.o=.d)
-EXECUTABLE = brother-scand
+EXECUTABLE = build/brother-scand
 
 -include $(DEPS)
 
@@ -21,9 +21,10 @@ all: $(SOURCES) $(EXECUTABLE)
 $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(OBJECTS) -o $@ $(LDFLAGS)
 
-%.o: %.c
-	$(CC) -c $< -MM -MF $(patsubst %.o,%.d,$@)
-	$(CC) $(CFLAGS) -c $< -o $@
+build/%.o: %.c
+	@mkdir -p $(@D)
+	$(CC) -c -MM -MF $(patsubst %.o,%.d,$@) $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 .PHONY: clean
 

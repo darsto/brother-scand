@@ -46,7 +46,7 @@ make
 cd out
 vi ./brother.config
 chmod +x ./scanhook.sh
-../brother-scand
+../build/brother-scand
 ```
 
 The driver **should** work for the most of Brother devices. 
