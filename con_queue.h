@@ -9,7 +9,6 @@
 
 #include <stdatomic.h>
 #include <stddef.h>
-#include <stdbool.h>
 
 struct con_queue {
     atomic_size_t head, tail;
