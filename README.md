@@ -42,14 +42,11 @@ image data within the same (original) connection. But only on Windows... Well, n
 ```
 git clone https://github.com/darsto/brother-scanner-driver.git
 cd brother-scanner-driver
-mkdir build
-cd build
-cmake -DCMAKE_BUILD_TYPE=Release ..
 make
-cp ../out/* ./
-$EDITOR ./brother.config
+cd out
+vi ./brother.config
 chmod +x ./scanhook.sh
-./brother
+../brother-scand
 ```
 
 The driver **should** work for the most of Brother devices. 
