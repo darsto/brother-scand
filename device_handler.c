@@ -142,17 +142,29 @@ device_handler_add_device(struct device_config *config)
     struct device *dev;
     int conn, status, i;
 
-    conn = network_init_conn(NETWORK_TYPE_UDP, htons(DEVICE_HANDLER_PORT),
-                             inet_addr(config->ip), htons(SNMP_PORT), config->timeout);
+    conn = network_open(NETWORK_TYPE_UDP, config->timeout);
     if (conn < 0) {
-        fprintf(stderr, "Could not connect to device at %s.\n", config->ip);
+        fprintf(stderr, "Could not init a connection for device %s.\n", config->ip);
         return NULL;
+    }
+
+    if (network_bind(conn, htons(DEVICE_HANDLER_PORT)) != 0) {
+        fprintf(stderr, "Could not bind device connection to port %d.\n",
+                DEVICE_HANDLER_PORT);
+        network_close(conn);
+        return NULL;
+    }
+
+    if (network_reconnect(conn, inet_addr(config->ip), htons(SNMP_PORT))) {
+        fprintf(stderr, "Could not connection to device at %s:%d.\n",
+                config->ip, SNMP_PORT);
+        network_close(conn);
     }
 
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
         fprintf(stderr, "Could not calloc memory for device at %s.\n", config->ip);
-        network_disconnect(conn);
+        network_close(conn);
         return NULL;
     }
 
@@ -168,7 +180,7 @@ device_handler_add_device(struct device_config *config)
 
     if (i == 3) {
         fprintf(stderr, "Error: device at %s is unreachable.\n", config->ip);
-        network_disconnect(conn);
+        network_close(conn);
         return NULL;
     }
 
@@ -273,19 +285,24 @@ device_handler_init(const char *config_path)
         }
     }
 
-    g_dev_handler.button_conn = network_init_conn(NETWORK_TYPE_UDP, htons(BUTTON_HANDLER_PORT),
-                                                  0, 0, BUTTON_HANDLER_NETWORK_TIMEOUT);
+    g_dev_handler.button_conn = network_open(NETWORK_TYPE_UDP, BUTTON_HANDLER_NETWORK_TIMEOUT);
     if (g_dev_handler.button_conn < 0) {
         fprintf(stderr, "Fatal: Could not setup button handler connection at %s.\n",
                 g_config.local_ip);
         return;
     }
 
+    if (network_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
+	fprintf(stderr, "Fatal: Could not bind button handler socket to %s:%d.\n",
+		g_config.local_ip, BUTTON_HANDLER_PORT);
+	return;
+    }
+
     g_dev_handler.thread = event_thread_create("device_handler", device_handler_loop,
                                                device_handler_stop, NULL);
     if (g_dev_handler.thread == NULL) {
         fprintf(stderr, "Fatal: could not init device_handler thread.\n");
-        network_disconnect(g_dev_handler.button_conn);
+        network_close(g_dev_handler.button_conn);
         return;
     }
 }

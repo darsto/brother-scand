@@ -8,7 +8,6 @@
 #include <stdatomic.h>
 #include <stdio.h>
 #include <zconf.h>
-#include <assert.h>
 #include <stdbool.h>
 #include <memory.h>
 #include <errno.h>
@@ -22,7 +21,7 @@ struct network_conn {
     int fd;
     enum network_type type;
     bool connected;
-    bool dynamic_client;
+    bool is_stream;
     struct sockaddr_in sin_me;
     struct sockaddr_in sin_oth;
     struct timeval timeout;
@@ -52,6 +51,7 @@ create_socket(struct network_conn *conn, unsigned timeout_sec)
         conn->fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     } else {
         conn->fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
+        conn->is_stream = true;
     }
 
     if (conn->fd == -1) {
@@ -79,29 +79,64 @@ create_socket(struct network_conn *conn, unsigned timeout_sec)
     return 0;
 }
 
-static int
-init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr,
-          in_port_t dest_port, unsigned timeout_sec)
+int
+network_open(enum network_type type, unsigned timeout_sec)
 {
-    if (create_socket(conn, timeout_sec) == -1) {
+    int conn_id;
+    struct network_conn *conn;
+
+    conn_id = atomic_fetch_add(&g_conn_count, 1);
+    conn = &g_conns[conn_id];
+
+    conn->type = type;
+    if (create_socket(conn, timeout_sec) != 0) {
         return -1;
     }
+
+    return conn_id;
+}
+
+int
+network_bind(int conn_id, in_port_t local_port)
+{
+    struct network_conn *conn;
+
+    conn = get_network_conn(conn_id);
 
     conn->sin_me.sin_family = AF_INET;
     conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
     conn->sin_me.sin_port = local_port;
 
-    if (local_port > 0 && bind(conn->fd, (struct sockaddr *) &conn->sin_me,
-                               sizeof(conn->sin_me)) != 0) {
+    if (bind(conn->fd, (struct sockaddr *) &conn->sin_me, sizeof(conn->sin_me)) != 0) {
         perror("bind");
-        close(conn->fd);
         return -1;
     }
 
-    if (dest_addr == 0) {
-        conn->dynamic_client = true;
+    return 0;
+}
+
+int
+network_reconnect(int conn_id, in_addr_t dest_addr, in_port_t dest_port)
+{
+    struct network_conn *conn;
+    int retries;
+
+    conn = get_network_conn(conn_id);
+
+    if (conn->connected) {
+        network_close(conn_id);
+
+        if (create_socket(conn, (unsigned) conn->timeout.tv_sec) != 0) {
+            return -1;
+        }
+
+        if (conn->sin_me.sin_port &&
+            network_bind(conn_id, conn->sin_me.sin_port) != 0) {
+            return -1;
+        }
     }
 
+    conn->is_stream = true;
     conn->sin_oth.sin_addr.s_addr = dest_addr;
     conn->sin_oth.sin_family = AF_INET;
     conn->sin_oth.sin_port = dest_port;
@@ -110,63 +145,20 @@ init_conn(struct network_conn *conn, in_port_t local_port, in_addr_t dest_addr,
         return 0;
     }
 
-    if (connect(conn->fd, (struct sockaddr *) &conn->sin_oth , sizeof(conn->sin_oth)) != 0) {
-        perror("connect");
-        close(conn->fd);
-        return -1;
-    }
-
-    return 0;
-}
-
-int
-network_init_conn(enum network_type type, in_port_t local_port, in_addr_t dest_addr,
-                  in_port_t dest_port, unsigned timeout_sec)
-{
-    int conn_id;
-    struct network_conn *conn;
-
-    conn_id = atomic_fetch_add(&g_conn_count, 1);
-    conn = &g_conns[conn_id];
-    assert(!conn->connected);
-
-    conn->type = type;
-    if (init_conn(conn, local_port, dest_addr, dest_port, timeout_sec) != 0) {
-        return -1;
-    }
-
-    conn->connected = true;
-    return conn_id;
-}
-
-int
-network_reconnect(int conn_id)
-{
-    struct network_conn *conn;
-    int retries;
-
-    conn = get_network_conn(conn_id);
-
-    if (conn->connected) {
-        network_disconnect(conn_id);
-    }
-
     for (retries = 0; retries < 3; ++retries) {
         usleep(1000 * 25);
-        if (init_conn(conn, conn->sin_me.sin_port,
-                      conn->sin_oth.sin_addr.s_addr, conn->sin_oth.sin_port,
-                      (unsigned) conn->timeout.tv_sec) == 0) {
+        if (connect(conn->fd, (struct sockaddr *) &conn->sin_oth , sizeof(conn->sin_oth)) == 0) {
             break;
         }
-
     }
 
     if (retries == 3) {
+        perror("connect");
         return -1;
     }
 
     conn->connected = true;
-    return conn_id;
+    return 0;
 }
 
 int
@@ -177,8 +169,6 @@ network_send(int conn_id, const void *buf, size_t len)
     char hexdump_line[64];
 
     conn = get_network_conn(conn_id);
-    assert(conn->connected);
-
     if (conn->type == NETWORK_TYPE_UDP) {
         sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth,
                             sizeof(conn->sin_oth));
@@ -207,8 +197,6 @@ network_receive(int conn_id, void *buf, size_t len)
     char hexdump_line[64];
 
     conn = get_network_conn(conn_id);
-    assert(conn->connected);
-
     slen = sizeof(sin_oth_tmp);
 
     if (conn->type == NETWORK_TYPE_UDP) {
@@ -224,7 +212,7 @@ network_receive(int conn_id, void *buf, size_t len)
         return -1;
     }
 
-    if (conn->type == NETWORK_TYPE_UDP && conn->dynamic_client) {
+    if (conn->type == NETWORK_TYPE_UDP && !conn->is_stream) {
         memcpy(&conn->sin_oth, &sin_oth_tmp, sizeof(conn->sin_oth));
     }
 
@@ -249,15 +237,11 @@ network_get_client_ip(int conn_id, char ip[16])
 
 
 int
-network_disconnect(int conn_id)
+network_close(int conn_id)
 {
     struct network_conn *conn;
 
     conn = get_network_conn(conn_id);
-    if (!conn->connected) {
-        return 0;
-    }
-
     close(conn->fd);
     conn->connected = false;
     return 0;

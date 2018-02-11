@@ -14,12 +14,12 @@ enum network_type {
     NETWORK_TYPE_TCP,
 };
 
-int network_init_conn(enum network_type type, in_port_t local_port, in_addr_t dest_addr,
-                      in_port_t dest_port, unsigned timeout_sec);
-int network_reconnect(int conn_id);
+int network_open(enum network_type type, unsigned timeout_sec);
+int network_bind(int conn_id, in_port_t local_port);
+int network_reconnect(int conn_id, in_addr_t dest_addr, in_port_t dest_port);
 int network_send(int conn_id, const void *buf, size_t len);
 int network_receive(int conn_id, void *buf, size_t len);
 int network_get_client_ip(int conn_id, char ip[16]);
-int network_disconnect(int conn_id);
+int network_close(int conn_id);
 
 #endif //BROTHER_NETWORK_H

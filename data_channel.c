@@ -638,16 +638,8 @@ init_connection(struct data_channel *data_channel)
 {
     int msg_len;
 
-    if (data_channel->conn >= 0) {
-        data_channel->conn = network_reconnect(data_channel->conn);
-    } else {
-        data_channel->conn = network_init_conn(NETWORK_TYPE_TCP, htons(DATA_CHANNEL_LOCAL_PORT),
-                                               inet_addr(data_channel->config->ip),
-                                               htons(DATA_CHANNEL_TARGET_PORT),
-                                               data_channel->config->timeout);
-    }
-
-    if (data_channel->conn < 0) {
+    if (network_reconnect(data_channel->conn, inet_addr(data_channel->config->ip),
+                          htons(DATA_CHANNEL_TARGET_PORT)) != 0) {
         fprintf(stderr, "Could not connect to scanner.\n");
         return -1;
     }
@@ -684,8 +676,6 @@ data_channel_loop(void *arg)
         fprintf(stderr, "data_channel %d: failed to process data. The channel will be closed.\n",
                 data_channel->conn);
 
-        network_disconnect(data_channel->conn);
-
         if (data_channel->tempfile) {
             fclose(data_channel->tempfile);
             data_channel->tempfile = NULL;
@@ -705,10 +695,7 @@ data_channel_stop(void *arg)
         data_channel->tempfile = NULL;
     }
 
-	if (data_channel->conn >= 0) {
-    	network_disconnect(data_channel->conn);
-	}
-
+	network_close(data_channel->conn);
     free(data_channel);
 }
 
@@ -717,6 +704,20 @@ init_data_channel(struct data_channel *data_channel)
 {
     data_channel->thread = event_thread_self();
     data_channel->process_cb = set_paused;
+
+    data_channel->conn = network_open(NETWORK_TYPE_TCP, data_channel->config->timeout);
+    if (data_channel->conn < 0) {
+        fprintf(stderr, "Failed to init a data_channel.\n");
+        event_thread_stop(data_channel->thread);
+        return 0;
+    }
+
+    if (network_bind(data_channel->conn, htons(DATA_CHANNEL_LOCAL_PORT)) != 0) {
+        fprintf(stderr, "Failed to bind a data_channel to port %d.\n",
+                DATA_CHANNEL_LOCAL_PORT);
+        event_thread_stop(data_channel->thread);
+        return 0;
+    }
 
     memcpy(data_channel->params, data_channel->config->scan_params,
            sizeof(data_channel->config->scan_params));
@@ -771,7 +772,6 @@ data_channel_create(struct device_config *config)
         return NULL;
     }
 
-    data_channel->conn = -1;
     data_channel->config = config;
     data_channel->process_cb = init_data_channel;
 
@@ -782,6 +782,5 @@ data_channel_create(struct device_config *config)
         return NULL;
     }
 
-    data_channel->thread = thread;
     return data_channel;
 }
