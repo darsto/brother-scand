@@ -10,7 +10,7 @@
 #include <sys/socket.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <signal.h>
+#include <semaphore.h>
 #include "event_thread.h"
 #include "con_queue.h"
 
@@ -36,6 +36,7 @@ struct event_thread {
     void *arg;
     struct con_queue *events;
     pthread_t tid;
+    sem_t sem;
 };
 
 static atomic_int g_thread_cnt;
@@ -90,6 +91,7 @@ event_thread_destroy(struct event_thread *thread)
 
     free(thread->events);
     free(thread->name);
+    sem_destroy(&thread->sem);
 }
 
 static void
@@ -124,24 +126,13 @@ event_thread_pause(struct event_thread *thread)
 int
 event_thread_kick(struct event_thread *thread)
 {
-    if (thread->state == EVENT_THREAD_STOPPED) {
-        fprintf(stderr, "Thread %p is not running.\n", (void *)thread);
-        return -1;
-    }
-
     if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread, (void *) (intptr_t)  EVENT_THREAD_RUNNING) != 0) {
         fprintf(stderr, "Failed to wake thread %p.\n", (void *)thread);
         return -1;
     }
 
-    pthread_kill(thread->tid, SIGUSR1);
+    sem_post(&thread->sem);
     return 0;
-}
-
-static void
-sig_handler(int signo)
-{
-    /** Interrupt any blocking IO / poll */
 }
 
 static void *
@@ -151,7 +142,7 @@ event_thread_loop(void *arg)
     struct event *event;
     sigset_t sigset;
 
-    sigemptyset(&sigset);
+    sem_init(&thread->sem, 0, 0);
 
     while (thread->state != EVENT_THREAD_STOPPED) {
         while (con_queue_pop(thread->events, (void **) &event) == 0) {
@@ -164,7 +155,7 @@ event_thread_loop(void *arg)
         }
 
         if (thread->state == EVENT_THREAD_SLEEPING) {
-            sigsuspend(&sigset);
+            sem_wait(&thread->sem);
         }
     }
 
@@ -237,7 +228,7 @@ event_thread_stop(struct event_thread *thread)
         return -1;
     }
 
-    pthread_kill(thread->tid, SIGUSR1);
+    sem_post(&thread->sem);
     return 0;
 }
 
@@ -261,10 +252,6 @@ void
 event_thread_lib_init(void)
 {
     atomic_init(&g_thread_cnt, 0);
-
-    if (signal(SIGUSR1, sig_handler) == SIG_ERR) {
-        fprintf(stderr, "Failed to bind SIGUSR1 handler.\n");
-    }
 }
 
 void
