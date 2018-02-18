@@ -148,12 +148,14 @@ network_send(struct network_conn *conn, const void *buf, size_t len)
     ssize_t sent_bytes;
     char hexdump_line[64];
 
-    if (conn->type == NETWORK_TYPE_UDP) {
-        sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth,
-                            sizeof(conn->sin_oth));
-    } else {
-        sent_bytes = send(conn->fd, buf, len, 0);
-    }
+    do {
+        if (conn->type == NETWORK_TYPE_UDP) {
+            sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth,
+                                sizeof(conn->sin_oth));
+        } else {
+            sent_bytes = send(conn->fd, buf, len, 0);
+        }
+    } while (errno == EINTR);
 
     if (sent_bytes < 0) {
         perror("sendto");
@@ -176,11 +178,13 @@ network_receive(struct network_conn *conn, void *buf, size_t len)
 
     slen = sizeof(sin_oth_tmp);
 
-    if (conn->type == NETWORK_TYPE_UDP) {
-        recv_bytes = recvfrom(conn->fd, buf, len, 0, (struct sockaddr *) &sin_oth_tmp, &slen);
-    } else {
-        recv_bytes = recv(conn->fd, buf, len, 0);
-    }
+    do {
+        if (conn->type == NETWORK_TYPE_UDP) {
+            recv_bytes = recvfrom(conn->fd, buf, len, 0, (struct sockaddr *) &sin_oth_tmp, &slen);
+        } else {
+            recv_bytes = recv(conn->fd, buf, len, 0);
+        }
+    } while (errno == EINTR);
 
     if (recv_bytes < 0) {
         if (errno != EAGAIN && errno != EWOULDBLOCK) {
