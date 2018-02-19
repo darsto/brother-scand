@@ -61,7 +61,8 @@ allocate_event(void (*callback)(void *, void *), void *arg1, void *arg2)
 }
 
 int
-event_thread_enqueue_event(struct event_thread *thread, void (*callback)(void *, void *), void *arg1, void *arg2)
+event_thread_enqueue_event(struct event_thread *thread,
+                           void (*callback)(void *, void *), void *arg1, void *arg2)
 {
     struct event *event;
 
@@ -115,7 +116,8 @@ event_thread_pause(struct event_thread *thread)
         return -1;
     }
 
-    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread, (void *) (intptr_t) EVENT_THREAD_SLEEPING) != 0) {
+    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
+                                   (void *) (intptr_t) EVENT_THREAD_SLEEPING) != 0) {
         fprintf(stderr, "Failed to pause thread %p.\n", (void *)thread);
         return -1;
     }
@@ -126,7 +128,8 @@ event_thread_pause(struct event_thread *thread)
 int
 event_thread_kick(struct event_thread *thread)
 {
-    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread, (void *) (intptr_t)  EVENT_THREAD_RUNNING) != 0) {
+    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
+                                   (void *) (intptr_t)  EVENT_THREAD_RUNNING) != 0) {
         fprintf(stderr, "Failed to wake thread %p.\n", (void *)thread);
         return -1;
     }
@@ -169,14 +172,16 @@ event_thread_loop(void *arg)
 }
 
 struct event_thread *
-event_thread_create(const char *name, void (*update_cb)(void *), void (*stop_cb)(void *), void *arg)
+event_thread_create(const char *name, void (*update_cb)(void *),
+                    void (*stop_cb)(void *), void *arg)
 {
     struct event_thread *thread;
     int thread_id;
 
     thread_id = atomic_fetch_add(&g_thread_cnt, 1);
     if (thread_id >= MAX_EVENT_THREADS) {
-        fprintf(stderr, "Fatal: reached thread limit of %d. Can't create another thread.\n", MAX_EVENT_THREADS);
+        fprintf(stderr, "Fatal: reached thread limit of %d. Can't create another thread.\n",
+                MAX_EVENT_THREADS);
         goto name_err;
     }
 
@@ -223,7 +228,8 @@ event_thread_stop(struct event_thread *thread)
         return -1;
     }
 
-    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread, (void *) (intptr_t) EVENT_THREAD_STOPPED) != 0) {
+    if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
+                                   (void *) (intptr_t) EVENT_THREAD_STOPPED) != 0) {
         fprintf(stderr, "Failed to stop thread %p.\n", (void *)thread);
         return -1;
     }
