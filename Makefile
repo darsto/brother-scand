@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -std=gnu11 -pedantic -Wall -Wextra \
+CFLAGS += -std=gnu11 -pedantic -Wall -Wextra \
 	-Werror -Wno-missing-braces -Wno-missing-field-initializers \
 	-Wno-unused-variable -Wno-unused-parameter -Wformat=2 -Wswitch-default \
 	-Wno-unused-label -Wno-unused-function -Wcast-align -Wpointer-arith -Wbad-function-cast \
