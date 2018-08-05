@@ -91,7 +91,8 @@ network_bind(struct network_conn *conn, in_port_t local_port)
     conn->sin_me.sin_addr.s_addr = htonl(INADDR_ANY);
     conn->sin_me.sin_port = local_port;
 
-    if (bind(conn->fd, (struct sockaddr *) &conn->sin_me, sizeof(conn->sin_me)) != 0) {
+    if (bind(conn->fd, (struct sockaddr *)&conn->sin_me,
+             sizeof(conn->sin_me)) != 0) {
         perror("bind");
         return -1;
     }
@@ -100,14 +101,15 @@ network_bind(struct network_conn *conn, in_port_t local_port)
 }
 
 int
-network_reconnect(struct network_conn *conn, in_addr_t dest_addr, in_port_t dest_port)
+network_reconnect(struct network_conn *conn, in_addr_t dest_addr,
+                  in_port_t dest_port)
 {
     int retries;
 
     if (conn->connected) {
         network_close(conn);
 
-        if (create_socket(conn, (unsigned) conn->timeout.tv_sec) != 0) {
+        if (create_socket(conn, (unsigned)conn->timeout.tv_sec) != 0) {
             return -1;
         }
 
@@ -128,7 +130,8 @@ network_reconnect(struct network_conn *conn, in_addr_t dest_addr, in_port_t dest
 
     for (retries = 0; retries < 3; ++retries) {
         usleep(1000 * 25);
-        if (connect(conn->fd, (struct sockaddr *) &conn->sin_oth , sizeof(conn->sin_oth)) == 0) {
+        if (connect(conn->fd, (struct sockaddr *)&conn->sin_oth,
+                    sizeof(conn->sin_oth)) == 0) {
             break;
         }
     }
@@ -149,7 +152,8 @@ network_send(struct network_conn *conn, const void *buf, size_t len)
 
     do {
         if (conn->type == NETWORK_TYPE_UDP) {
-            sent_bytes = sendto(conn->fd, buf, len, 0, (struct sockaddr *) &conn->sin_oth,
+            sent_bytes = sendto(conn->fd, buf, len, 0,
+                                (struct sockaddr *) &conn->sin_oth,
                                 sizeof(conn->sin_oth));
         } else {
             sent_bytes = send(conn->fd, buf, len, 0);
@@ -163,7 +167,7 @@ network_send(struct network_conn *conn, const void *buf, size_t len)
     LOG_DEBUG("sent %zd/%zu bytes to %d", sent_bytes, len,
               ntohs(conn->sin_oth.sin_port));
     DUMP_DEBUG(buf, len);
-    
+
     return (int) sent_bytes;
 }
 
@@ -178,7 +182,8 @@ network_receive(struct network_conn *conn, void *buf, size_t len)
 
     do {
         if (conn->type == NETWORK_TYPE_UDP) {
-            recv_bytes = recvfrom(conn->fd, buf, len, 0, (struct sockaddr *) &sin_oth_tmp, &slen);
+            recv_bytes = recvfrom(conn->fd, buf, len, 0,
+                                  (struct sockaddr *) &sin_oth_tmp, &slen);
         } else {
             recv_bytes = recv(conn->fd, buf, len, 0);
         }

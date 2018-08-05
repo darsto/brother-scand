@@ -18,7 +18,8 @@ struct network_conn;
 
 struct network_conn *network_open(enum network_type type, unsigned timeout_sec);
 int network_bind(struct network_conn *conn, in_port_t local_port);
-int network_reconnect(struct network_conn *conn, in_addr_t dest_addr, in_port_t dest_port);
+int network_reconnect(struct network_conn *conn, in_addr_t dest_addr,
+                      in_port_t dest_port);
 int network_send(struct network_conn *conn, const void *buf, size_t len);
 int network_receive(struct network_conn *conn, void *buf, size_t len);
 int network_get_client_ip(struct network_conn *conn, char ip[16]);

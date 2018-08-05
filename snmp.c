@@ -15,12 +15,16 @@
 #include "config.h"
 
 static atomic_int g_request_id;
-static uint32_t g_brInfoPrinterUStatusOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
-static uint32_t g_brRegisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 1, 0, SNMP_MSG_OID_END };
-static uint32_t g_brUnregisterKeyInfoOID[] = { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 2, 0, SNMP_MSG_OID_END };
+static uint32_t g_brInfoPrinterUStatusOID[] =
+{ 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
+static uint32_t g_brRegisterKeyInfoOID[] =
+{ 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 1, 0, SNMP_MSG_OID_END };
+static uint32_t g_brUnregisterKeyInfoOID[] =
+{ 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 2, 11, 1, 2, 0, SNMP_MSG_OID_END };
 
 static void
-init_msg_header(struct snmp_msg_header *msg_header, const char *community, enum snmp_data_type type)
+init_msg_header(struct snmp_msg_header *msg_header, const char *community,
+                enum snmp_data_type type)
 {
     msg_header->snmp_ver = 0;
     msg_header->community = community;
@@ -40,7 +44,8 @@ snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len)
     uint32_t varbind_num = 1;
 
     init_msg_header(&msg_header, "public", SNMP_DATA_T_PDU_GET_REQUEST);
-    memcpy(varbind.oid, g_brInfoPrinterUStatusOID, sizeof(g_brInfoPrinterUStatusOID));
+    memcpy(varbind.oid, g_brInfoPrinterUStatusOID,
+           sizeof(g_brInfoPrinterUStatusOID));
     varbind.value_type = SNMP_DATA_T_NULL;
 
     out = snmp_encode_msg(buf_end, &msg_header, varbind_num, &varbind);
@@ -71,7 +76,9 @@ out:
 }
 
 int
-snmp_register_scanner_driver(struct network_conn *conn, bool enabled, uint8_t *buf, size_t buf_len, const char **functions)
+snmp_register_scanner_driver(struct network_conn *conn, bool enabled,
+                             uint8_t *buf, size_t buf_len,
+                             const char **functions)
 {
     uint8_t *buf_end = buf + buf_len - 1;
 
@@ -91,9 +98,11 @@ snmp_register_scanner_driver(struct network_conn *conn, bool enabled, uint8_t *b
         }
 
         if (enabled) {
-            memcpy(varbind[i].oid, g_brRegisterKeyInfoOID, sizeof(g_brRegisterKeyInfoOID));
+            memcpy(varbind[i].oid, g_brRegisterKeyInfoOID,
+                   sizeof(g_brRegisterKeyInfoOID));
         } else {
-            memcpy(varbind[i].oid, g_brUnregisterKeyInfoOID, sizeof(g_brUnregisterKeyInfoOID));
+            memcpy(varbind[i].oid, g_brUnregisterKeyInfoOID,
+                   sizeof(g_brUnregisterKeyInfoOID));
         }
 
         varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;

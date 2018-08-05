@@ -106,7 +106,7 @@ event_thread_set_state_cb(void *arg1, void *arg2)
         return;
     }
 
-    thread->state = (enum event_thread_state) (intptr_t) arg2;
+    thread->state = (enum event_thread_state)(intptr_t) arg2;
 }
 
 int
@@ -118,7 +118,7 @@ event_thread_pause(struct event_thread *thread)
     }
 
     if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
-                                   (void *) (intptr_t) EVENT_THREAD_SLEEPING) != 0) {
+                                   (void *)(intptr_t) EVENT_THREAD_SLEEPING) != 0) {
         LOG_FATAL("Failed to pause thread %p.\n", thread);
         return -1;
     }
@@ -130,7 +130,7 @@ int
 event_thread_kick(struct event_thread *thread)
 {
     if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
-                                   (void *) (intptr_t)  EVENT_THREAD_RUNNING) != 0) {
+                                   (void *)(intptr_t) EVENT_THREAD_RUNNING) != 0) {
         LOG_FATAL("Failed to wake thread %p.\n", thread);
         return -1;
     }
@@ -230,7 +230,7 @@ event_thread_stop(struct event_thread *thread)
     }
 
     if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
-                                   (void *) (intptr_t) EVENT_THREAD_STOPPED) != 0) {
+                                   (void *)(intptr_t) EVENT_THREAD_STOPPED) != 0) {
         LOG_ERR("Failed to stop thread %p.\n", (void *)thread);
         return -1;
     }

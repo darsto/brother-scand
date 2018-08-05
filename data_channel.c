@@ -139,7 +139,8 @@ read_scan_params(struct data_channel *data_channel, uint8_t *buf, uint8_t *buf_e
 }
 
 static uint8_t *
-write_scan_params(struct data_channel *data_channel, uint8_t *buf, const char *whitelist)
+write_scan_params(struct data_channel *data_channel, uint8_t *buf,
+                  const char *whitelist)
 {
     struct scan_param *param;
     size_t len;
@@ -166,10 +167,11 @@ write_scan_params(struct data_channel *data_channel, uint8_t *buf, const char *w
 }
 
 static int
-process_page_end_header(struct data_channel *data_channel, struct data_packet_header *header,
+process_page_end_header(struct data_channel *data_channel,
+                        struct data_packet_header *header,
                         uint32_t payload_len)
 {
-    FILE* destfile;
+    FILE *destfile;
     struct scan_param *param;
     char filename[64];
     size_t size;
@@ -191,7 +193,8 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
     }
 
     fseek(data_channel->tempfile, 0, SEEK_SET);
-    while ((size = fread(data_channel->buf, 1, sizeof(data_channel->buf), data_channel->tempfile))) {
+    while ((size = fread(data_channel->buf, 1, sizeof(data_channel->buf),
+                         data_channel->tempfile))) {
         fwrite(data_channel->buf, 1, size, destfile);
     }
 
@@ -211,7 +214,8 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
     }
 
     rc = snprintf((char *) data_channel->buf, sizeof(data_channel->buf), "%s %s %s",
-             data_channel->config->scan_funcs[i], data_channel->config->ip, filename);
+                  data_channel->config->scan_funcs[i], data_channel->config->ip,
+                  filename);
     if (rc < 0 || rc == sizeof(data_channel->buf)) {
         LOG_ERR("%s: couldn't execute user hook. snprintf failed: %d\n",
                 data_channel->config->ip, errno);
@@ -224,7 +228,8 @@ process_page_end_header(struct data_channel *data_channel, struct data_packet_he
 }
 
 static int
-process_chunk_header(struct data_channel *data_channel, struct data_packet_header *header,
+process_chunk_header(struct data_channel *data_channel,
+                     struct data_packet_header *header,
                      uint32_t payload_len)
 {
     int progress_percent;
@@ -250,8 +255,10 @@ process_chunk_header(struct data_channel *data_channel, struct data_packet_heade
     LOG_DEBUG("%s: receiving data: %d%%\n", data_channel->config->ip,
               progress_percent);
 
-    data_channel->page_data.remaining_chunk_bytes = header->payload[0] | (header->payload[1] << 8);
-    total_chunk_size = data_channel->page_data.remaining_chunk_bytes + DATA_CHANNEL_CHUNK_HEADER_SIZE;
+    data_channel->page_data.remaining_chunk_bytes = header->payload[0] |
+            (header->payload[1] << 8);
+    total_chunk_size = data_channel->page_data.remaining_chunk_bytes +
+                       DATA_CHANNEL_CHUNK_HEADER_SIZE;
 
     if (total_chunk_size > DATA_CHANNEL_CHUNK_MAX_SIZE) {
         LOG_ERR("%s: invalid chunk size\n", data_channel->config->ip);
@@ -296,19 +303,19 @@ process_header(struct data_channel *data_channel, uint8_t *buf, uint32_t buf_len
     }
 
     switch (header.id) {
-        case 0x64:
-            rc = process_chunk_header(data_channel, &header, payload_len);
-            break;
-        case 0x82:
-            rc = process_page_end_header(data_channel, &header, payload_len);
-            if (rc == 0) {
-                rc = 1;
-            }
-            break;
-        default:
-            LOG_ERR("%s: received unsupported header (id = %u)\n",
-                    data_channel->config->ip, header.id);
-            rc = -1;
+    case 0x64:
+        rc = process_chunk_header(data_channel, &header, payload_len);
+        break;
+    case 0x82:
+        rc = process_page_end_header(data_channel, &header, payload_len);
+        if (rc == 0) {
+            rc = 1;
+        }
+        break;
+    default:
+        LOG_ERR("%s: received unsupported header (id = %u)\n",
+                data_channel->config->ip, header.id);
+        rc = -1;
     }
 
     return rc;
@@ -326,7 +333,8 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
             old_rem_chunk_bytes = data_channel->page_data.remaining_chunk_bytes;
 
             /* process up to chunk header */
-            rc = process_data(data_channel, buf, data_channel->page_data.remaining_chunk_bytes);
+            rc = process_data(data_channel, buf,
+                              data_channel->page_data.remaining_chunk_bytes);
             if (rc != 0) {
                 return rc;
             }
@@ -360,13 +368,15 @@ receive_data(struct data_channel *data_channel)
     int msg_len, retries = 1;
     int rc;
 
-    if (data_channel->tempfile != NULL && data_channel->page_data.remaining_chunk_bytes == 0) {
+    if (data_channel->tempfile != NULL &&
+        data_channel->page_data.remaining_chunk_bytes == 0) {
         /* waiting for sensor rail to return */
         retries = data_channel->config->page_finish_retries;
     }
 
     for (; retries > 0; --retries) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf,
+                                  sizeof(data_channel->buf));
         if (msg_len > 0) {
             break;
         }
@@ -401,7 +411,8 @@ receive_initial_data(struct data_channel *data_channel)
     int retries = data_channel->config->page_init_retries;
 
     for (; retries > 0; --retries) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf,
+                                  sizeof(data_channel->buf));
         if (msg_len > 0) {
             break;
         }
@@ -445,7 +456,8 @@ exchange_params2(struct data_channel *data_channel)
     long tmp;
 
     for (retries = 0; retries < 2; ++retries) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+        msg_len = network_receive(data_channel->conn, data_channel->buf,
+                                  sizeof(data_channel->buf));
         if (msg_len > 0) {
             break;
         }
@@ -485,7 +497,7 @@ exchange_params2(struct data_channel *data_channel)
     i = 0;
     buf_end = buf = data_channel->buf + 3;
 
-    while(i < sizeof(recv_params) / sizeof(recv_params[0])) {
+    while (i < sizeof(recv_params) / sizeof(recv_params[0])) {
         tmp = strtol((char *) buf, (char **) &buf_end, 10);
         if (buf_end == buf || *buf_end != ',' ||
             ((tmp == LONG_MIN || tmp == LONG_MAX) && errno == ERANGE)) {
@@ -508,13 +520,16 @@ exchange_params2(struct data_channel *data_channel)
     assert(param);
 
     /* previously sent and just received dpi should match */
-    sprintf((char *) data_channel->buf, "%ld,%ld", recv_params[0], recv_params[1]);
-    if (strncmp((char *) (data_channel->buf), param->value, sizeof(param->value)) != 0) {
+    sprintf((char *) data_channel->buf, "%ld,%ld",
+            recv_params[0], recv_params[1]);
+    if (strncmp((char *)(data_channel->buf), param->value,
+                sizeof(param->value)) != 0) {
         LOG_INFO("Scanner does not support requested dpi: %s."
                  " %s will be used instead\n",
-                 param->value, (char *) (data_channel->buf));
+                 param->value, (char *)(data_channel->buf));
 
-        strncpy(param->value, (const char *) data_channel->buf, sizeof(param->value));
+        strncpy(param->value, (const char *) data_channel->buf,
+                sizeof(param->value));
         param->value[sizeof(param->value)] = 0;
     }
 
@@ -538,7 +553,8 @@ exchange_params2(struct data_channel *data_channel)
     *buf++ = 0x80; // end of message
 
     for (retries = 0; retries < 2; ++retries) {
-        msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
+        msg_len = network_send(data_channel->conn, data_channel->buf, buf -
+                               data_channel->buf);
         if (msg_len > 0) {
             break;
         }
@@ -563,7 +579,8 @@ exchange_params1(struct data_channel *data_channel)
     size_t str_len;
     int i;
 
-    msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+    msg_len = network_receive(data_channel->conn, data_channel->buf,
+                              sizeof(data_channel->buf));
     if (msg_len < 0) {
         LOG_ERR("%s: couldn't receive initial scan params\n",
                 data_channel->config->ip);
@@ -572,21 +589,24 @@ exchange_params1(struct data_channel *data_channel)
 
     /* process received data */
     if (data_channel->buf[0] != 0x30) {
-        LOG_ERR("%s: received invalid initial exchange params msg (invalid first byte '%c').\n",
-                data_channel->config->ip, data_channel->buf[0]);
+        LOG_ERR("%s: received invalid initial exchange params msg"
+                " (invalid first byte '%c').\n", data_channel->config->ip,
+                data_channel->buf[0]);
         return -1;
     }
     //buf[1] == 0x15 or 0x55 (might refer to automatic/manual scan)
     //buf[2] == 0x30 or 0x00 ??
 
     if (data_channel->buf[msg_len - 2] != 0x0a) { //end of param
-        LOG_ERR("%s: received invalid initial exchange params msg (invalid second-last byte '%c').\n",
+        LOG_ERR("%s: received invalid initial exchange params msg"
+                " (invalid second-last byte '%c').\n",
                 data_channel->config->ip, data_channel->buf[msg_len - 2]);
         return -1;
     }
 
     if (data_channel->buf[msg_len - 1] != 0x80) { //end of message
-        LOG_ERR("%s: received invalid initial exchange params msg (invalid last byte '%c').\n",
+        LOG_ERR("%s: received invalid initial exchange params msg"
+                " (invalid last byte '%c').\n",
                 data_channel->config->ip, data_channel->buf[msg_len - 1]);
         return -1;
     }
@@ -641,7 +661,8 @@ exchange_params1(struct data_channel *data_channel)
 
     *buf++ = 0x80; // end of message
 
-    msg_len = network_send(data_channel->conn, data_channel->buf, buf - data_channel->buf);
+    msg_len = network_send(data_channel->conn, data_channel->buf, buf -
+                           data_channel->buf);
     if (msg_len < 0) {
         LOG_ERR("Couldn't send initial scan params on data_channel %s\n",
                 data_channel->config->ip);
@@ -663,7 +684,8 @@ init_connection(struct data_channel *data_channel)
         return -1;
     }
 
-    msg_len = network_receive(data_channel->conn, data_channel->buf, sizeof(data_channel->buf));
+    msg_len = network_receive(data_channel->conn, data_channel->buf,
+                              sizeof(data_channel->buf));
     if (msg_len < 0) {
         LOG_ERR("Couldn't receive welcome message on data_channel %s\n",
                 data_channel->config->ip);
@@ -717,7 +739,7 @@ data_channel_stop(void *arg)
         data_channel->tempfile = NULL;
     }
 
-	network_close(data_channel->conn);
+    network_close(data_channel->conn);
     free(data_channel);
 }
 
@@ -799,7 +821,8 @@ data_channel_create(struct device_config *config)
     data_channel->config = config;
     data_channel->process_cb = init_data_channel;
 
-    thread = event_thread_create("data_channel", data_channel_loop, data_channel_stop, data_channel);
+    thread = event_thread_create("data_channel", data_channel_loop,
+                                 data_channel_stop, data_channel);
     if (thread == NULL) {
         LOG_ERR("Failed to create data_channel thread.\n");
         free(data_channel);

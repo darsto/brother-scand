@@ -32,13 +32,13 @@ int
 con_queue_pop(struct con_queue *queue, void **element)
 {
     size_t currentHead = atomic_load(&queue->head);
-    
+
     if (currentHead == atomic_load(&queue->tail)) {
         return -1;
     }
 
     *element = queue->data[currentHead];
     atomic_store(&queue->head, con_queue_next(queue, currentHead));
-    
+
     return 0;
 }

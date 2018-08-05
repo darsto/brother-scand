@@ -48,7 +48,8 @@ load_local_ip(void)
         goto out;
     }
 
-    const char *ret = inet_ntop(AF_INET, &name.sin_addr, g_config.local_ip, sizeof(g_config.local_ip));
+    const char *ret = inet_ntop(AF_INET, &name.sin_addr, g_config.local_ip,
+                                sizeof(g_config.local_ip));
 
     if (ret) {
         rc = 0;
@@ -97,7 +98,7 @@ init_default_device_config(struct device_config *dev_config)
 int
 config_init(const char *config_path)
 {
-    FILE* config;
+    FILE *config;
     struct device_config *dev_config = NULL;
     char buf[1024];
     char var_str[1024];

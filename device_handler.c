@@ -73,7 +73,8 @@ encode_password(const char *pass, char *buf)
     for (i = 0; i < 4; ++i) {
         tmp = pass[i];
         for (j = 0; j < 8; ++j) {
-            tmp_buf[g_pass_shuffle_table[8 * i + j] >> 3] |= ((tmp & 1) << (g_pass_shuffle_table[8 * i + j] & 7));
+            tmp_buf[g_pass_shuffle_table[8 * i + j] >> 3] |=
+                ((tmp & 1) << (g_pass_shuffle_table[8 * i + j] & 7));
             tmp >>= 1;
         }
     }
@@ -109,16 +110,16 @@ register_scanner_driver(struct device *dev, bool enabled)
             continue;
         }
 
-        rc = snprintf(msg[num_funcs], sizeof(msg), ""
-                          "TYPE=BR;"
-                          "BUTTON=SCAN;"
-                          "USER=\"%s\";"
-                          "FUNC=%s;"
-                          "HOST=%s:%d;"
-                          "APPNUM=%d;"
-                          "DURATION=%d;"
-                          "BRID=%s;"
-                          "CC=1;",
+        rc = snprintf(msg[num_funcs], sizeof(msg),
+                      "TYPE=BR;"
+                      "BUTTON=SCAN;"
+                      "USER=\"%s\";"
+                      "FUNC=%s;"
+                      "HOST=%s:%d;"
+                      "APPNUM=%d;"
+                      "DURATION=%d;"
+                      "BRID=%s;"
+                      "CC=1;",
                       g_config.hostname,
                       g_scan_func_str[i],
                       g_config.local_ip, BUTTON_HANDLER_PORT,
@@ -134,7 +135,8 @@ register_scanner_driver(struct device *dev, bool enabled)
         ++num_funcs;
     }
 
-    return snmp_register_scanner_driver(dev->conn, enabled, g_buf, sizeof(g_buf), functions);
+    return snmp_register_scanner_driver(dev->conn, enabled, g_buf, sizeof(g_buf),
+                                        functions);
 }
 
 struct device *
@@ -177,7 +179,7 @@ device_handler_add_device(struct device_config *config)
         }
 
         LOG_WARN("Warn: device at %s is currently unreachable. Retry %d/3.\n",
-                config->ip, i + 1);
+                 config->ip, i + 1);
     }
 
     if (i == 3) {
@@ -214,7 +216,8 @@ device_handler_loop(void *arg)
             dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
             dev->status = snmp_get_printer_status(dev->conn, g_buf, sizeof(g_buf));
             if (dev->status != 10001) {
-                LOG_WARN("Warn: device at %s is currently unreachable.\n", dev->config->ip);
+                LOG_WARN("Warn: device at %s is currently unreachable.\n",
+                         dev->config->ip);
             }
         }
 
@@ -287,7 +290,8 @@ device_handler_init(const char *config_path)
         }
     }
 
-    g_dev_handler.button_conn = network_open(NETWORK_TYPE_UDP, BUTTON_HANDLER_NETWORK_TIMEOUT);
+    g_dev_handler.button_conn = network_open(NETWORK_TYPE_UDP,
+                                BUTTON_HANDLER_NETWORK_TIMEOUT);
     if (g_dev_handler.button_conn == NULL) {
         LOG_FATAL("Could not setup button handler connection at %s.\n",
                   g_config.local_ip);
@@ -296,12 +300,12 @@ device_handler_init(const char *config_path)
 
     if (network_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
         LOG_FATAL("Could not bind button handler socket to %s:%d.\n",
-	              g_config.local_ip, BUTTON_HANDLER_PORT);
-	return;
+                  g_config.local_ip, BUTTON_HANDLER_PORT);
+        return;
     }
 
     g_dev_handler.thread = event_thread_create("device_handler", device_handler_loop,
-                                               device_handler_stop, NULL);
+                           device_handler_stop, NULL);
     if (g_dev_handler.thread == NULL) {
         LOG_FATAL("Could not init device_handler thread.\n");
         network_close(g_dev_handler.button_conn);

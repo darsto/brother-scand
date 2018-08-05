@@ -31,7 +31,7 @@ static void
 print_version(void)
 {
     printf("Brother scanner driver. Build " __DATE__ " " __TIME__ "\n"
-               "Copyright 2017 Dariusz Stojaczyk\n");
+           "Copyright 2017 Dariusz Stojaczyk\n");
 }
 
 int
@@ -40,16 +40,17 @@ main(int argc, char *argv[])
     int option = 0;
     const char *config_path = "brother.config";
 
-    while ((option = getopt(argc, argv,"c:h")) != -1) {
+    while ((option = getopt(argc, argv, "c:h")) != -1) {
         switch (option) {
-            case 'c':
-                config_path = optarg;
-                break;
-            case 'h':
-                print_version();
-                exit(EXIT_SUCCESS);
-            default: print_usage();
-                exit(EXIT_FAILURE);
+        case 'c':
+            config_path = optarg;
+            break;
+        case 'h':
+            print_version();
+            exit(EXIT_SUCCESS);
+        default:
+            print_usage();
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -66,7 +67,7 @@ main(int argc, char *argv[])
     }
 
     device_handler_init(config_path);
-    
+
     event_thread_lib_wait();
     return 0;
 }

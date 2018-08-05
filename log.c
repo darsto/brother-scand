@@ -8,10 +8,10 @@
 #include "log.h"
 
 static const char *level_names[] = {
-        [LEVEL_DEBUG] = "DEBUG",
-        [LEVEL_WARN]  = "WARN",
-        [LEVEL_ERR]   = "ERR",
-        [LEVEL_FATAL] = "FATAL",
+    [LEVEL_DEBUG] = "DEBUG",
+    [LEVEL_WARN]  = "WARN",
+    [LEVEL_ERR]   = "ERR",
+    [LEVEL_FATAL] = "FATAL",
 };
 
 static int g_loglevel = LEVEL_DEBUG;
@@ -46,7 +46,7 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
     static char buf[256] = {0};
 
     char *buf_ptr = buf;
-    int relative_addr = (int) (data - data_start);
+    int relative_addr = (int)(data - data_start);
     size_t i, j;
 
     for (i = 0; i < 2; ++i) {
@@ -55,8 +55,8 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
     buf_ptr += i;
 
     for (i = 0; i < sizeof(void *); ++i) {
-        buf_ptr[i] = to_printable(
-            relative_addr >> (sizeof(void *) * 4 - 4 - i * 4));
+        buf_ptr[i] = to_printable(relative_addr >>
+                                  (sizeof(void *) * 4 - 4 - i * 4));
     }
     buf_ptr += i;
 
@@ -67,14 +67,15 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
     for (j = 0; j < 8; ++j) {
         for (i = 0; i < 2; ++i) {
             if (data < data_end) {
-                buf[10 + 5 * 8 + 4 + i + 2*j] = (char) (isprint(*data) ? *data : '.');
+                buf[10 + 5 * 8 + 4 + i + 2 * j] =
+                    (char)(isprint(*data) ? *data : '.');
 
                 buf_ptr[i * 2] = to_printable(*data >> 4);
                 buf_ptr[i * 2 + 1] = to_printable(*data);
-                
+
                 ++data;
             } else {
-                buf[10 + 5 * 8 + 4 + i + 2*j] = 0;
+                buf[10 + 5 * 8 + 4 + i + 2 * j] = 0;
 
                 buf_ptr[i * 2] = ' ';
                 buf_ptr[i * 2 + 1] = ' ';
@@ -90,7 +91,7 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
 
     printf("%s\n", buf);
 
-    return (int) (i * j);
+    return (int)(i * j);
 }
 
 void
