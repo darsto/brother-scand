@@ -13,6 +13,7 @@
 #include <semaphore.h>
 #include "event_thread.h"
 #include "con_queue.h"
+#include "log.h"
 
 #define MAX_EVENT_THREADS 32
 
@@ -49,7 +50,7 @@ allocate_event(void (*callback)(void *, void *), void *arg1, void *arg2)
 
     event = calloc(1, sizeof(*event));
     if (!event) {
-        fprintf(stderr, "Failed to allocate memory for event.\n");
+        LOG_FATAL("Failed to allocate memory for event.\n");
         return NULL;
     }
 
@@ -67,13 +68,13 @@ event_thread_enqueue_event(struct event_thread *thread,
     struct event *event;
 
     if (!thread) {
-        fprintf(stderr, "Trying to enqueue event to inexistent thread.\n");
+        LOG_FATAL("Trying to enqueue event to inexistent thread.\n");
         return -1;
     }
 
     event = allocate_event(callback, arg1, arg2);
     if (event == NULL) {
-        fprintf(stderr, "Failed to allocate event for enqueuing.\n");
+        LOG_FATAL("Failed to allocate event for enqueuing.\n");
         return -1;
     }
 
@@ -112,13 +113,13 @@ int
 event_thread_pause(struct event_thread *thread)
 {
     if (thread->state == EVENT_THREAD_STOPPED) {
-        fprintf(stderr, "Thread %p is not running.\n", (void *)thread);
+        LOG_FATAL("Can't stop thread %p. It's not running.\n", thread);
         return -1;
     }
 
     if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
                                    (void *) (intptr_t) EVENT_THREAD_SLEEPING) != 0) {
-        fprintf(stderr, "Failed to pause thread %p.\n", (void *)thread);
+        LOG_FATAL("Failed to pause thread %p.\n", thread);
         return -1;
     }
 
@@ -130,7 +131,7 @@ event_thread_kick(struct event_thread *thread)
 {
     if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
                                    (void *) (intptr_t)  EVENT_THREAD_RUNNING) != 0) {
-        fprintf(stderr, "Failed to wake thread %p.\n", (void *)thread);
+        LOG_FATAL("Failed to wake thread %p.\n", thread);
         return -1;
     }
 
@@ -176,12 +177,11 @@ event_thread_create(const char *name, void (*update_cb)(void *),
                     void (*stop_cb)(void *), void *arg)
 {
     struct event_thread *thread;
-    int thread_id;
+    int thread_id, rc;
 
     thread_id = atomic_fetch_add(&g_thread_cnt, 1);
     if (thread_id >= MAX_EVENT_THREADS) {
-        fprintf(stderr, "Fatal: reached thread limit of %d. Can't create another thread.\n",
-                MAX_EVENT_THREADS);
+        LOG_FATAL("Reached the thread limit (%d).\n", MAX_EVENT_THREADS);
         goto name_err;
     }
 
@@ -190,13 +190,13 @@ event_thread_create(const char *name, void (*update_cb)(void *),
     thread->state = EVENT_THREAD_RUNNING;
     thread->name = strdup(name);
     if (!thread->name) {
-        fprintf(stderr, "Fatal: strdup() failed, cannot start event thread.\n");
+        LOG_ERR("strdup() failed.\n");
         goto err;
     }
 
     thread->events = calloc(1, sizeof(*thread->events) + 32 * sizeof(void *));
     if (!thread->events) {
-        fprintf(stderr, "Fatal: calloc() failed, cannot start event thread.\n");
+        LOG_ERR("calloc() failed.\n");
         goto name_err;
     }
 
@@ -205,8 +205,9 @@ event_thread_create(const char *name, void (*update_cb)(void *),
     thread->stop_cb = stop_cb;
     thread->arg = arg;
 
-    if (pthread_create(&thread->tid, NULL, event_thread_loop, thread) != 0) {
-        fprintf(stderr, "Fatal: pthread_create() failed, cannot start event thread.\n");
+    rc = pthread_create(&thread->tid, NULL, event_thread_loop, thread);
+    if (rc != 0) {
+        LOG_ERR("pthread_create() failed: %s.\n", strerror(-rc));
         goto events_err;
     }
 
@@ -224,13 +225,13 @@ int
 event_thread_stop(struct event_thread *thread)
 {
     if (thread->state == EVENT_THREAD_STOPPED) {
-        fprintf(stderr, "Thread %p is not running.\n", (void *)thread);
+        LOG_ERR("Thread %p is not running.\n", (void *)thread);
         return -1;
     }
 
     if (event_thread_enqueue_event(thread, event_thread_set_state_cb, thread,
                                    (void *) (intptr_t) EVENT_THREAD_STOPPED) != 0) {
-        fprintf(stderr, "Failed to stop thread %p.\n", (void *)thread);
+        LOG_ERR("Failed to stop thread %p.\n", (void *)thread);
         return -1;
     }
 
@@ -299,7 +300,7 @@ event_thread_lib_shutdown(void)
 {
     pthread_t tid;
     if (pthread_create(&tid, NULL, event_thread_lib_shutdown_cb, NULL) != 0) {
-        fprintf(stderr, "Fatal: pthread_create() failed, cannot start shutdown thread.\n");
+        LOG_FATAL("pthread_create() failed, cannot start shutdown thread.\n");
         abort();
     }
     pthread_detach(tid);

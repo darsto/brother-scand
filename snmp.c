@@ -61,7 +61,7 @@ snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len)
     snmp_decode_msg(buf, buf_len, &msg_header, &varbind_num, &varbind);
     if (msg_header.error_index != 0 && msg_header.error_status != 0) {
         fprintf(stderr, "Received invalid printer status SNMP response\n");
-        hexdump("SNMP response", buf, (size_t) msg_len);
+        DUMP_ERR(buf, (size_t) msg_len);
         goto out;
     }
 
@@ -125,7 +125,7 @@ snmp_register_scanner_driver(struct network_conn *conn, bool enabled, uint8_t *b
     snmp_decode_msg(buf, buf_len, &msg_header, &varbind_num, varbind);
     if (msg_header.error_index != 0 && msg_header.error_status != 0) {
         fprintf(stderr, "Received invalid register SNMP response\n");
-        hexdump("SNMP response", buf, (size_t) msg_len);
+        DUMP_ERR(buf, (size_t) msg_len);
         goto out;
     }
 

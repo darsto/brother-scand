@@ -146,7 +146,6 @@ int
 network_send(struct network_conn *conn, const void *buf, size_t len)
 {
     ssize_t sent_bytes;
-    char hexdump_line[64];
 
     do {
         if (conn->type == NETWORK_TYPE_UDP) {
@@ -161,9 +160,9 @@ network_send(struct network_conn *conn, const void *buf, size_t len)
         perror("sendto");
     }
 
-    snprintf(hexdump_line, sizeof(hexdump_line), "sent %zd/%zu bytes to %d", sent_bytes,
-             len, ntohs(conn->sin_oth.sin_port));
-    hexdump(hexdump_line, buf, len);
+    LOG_DEBUG("sent %zd/%zu bytes to %d", sent_bytes, len,
+              ntohs(conn->sin_oth.sin_port));
+    DUMP_DEBUG(buf, len);
     
     return (int) sent_bytes;
 }
@@ -174,7 +173,6 @@ network_receive(struct network_conn *conn, void *buf, size_t len)
     ssize_t recv_bytes;
     struct sockaddr_in sin_oth_tmp;
     socklen_t slen;
-    char hexdump_line[64];
 
     slen = sizeof(sin_oth_tmp);
 
@@ -197,9 +195,9 @@ network_receive(struct network_conn *conn, void *buf, size_t len)
         memcpy(&conn->sin_oth, &sin_oth_tmp, sizeof(conn->sin_oth));
     }
 
-    snprintf(hexdump_line, sizeof(hexdump_line), "received %zd bytes from %d",
-             recv_bytes, ntohs(conn->sin_oth.sin_port));
-    hexdump(hexdump_line, buf, recv_bytes);
+    LOG_DEBUG("received %zd bytes from %d", recv_bytes,
+              ntohs(conn->sin_oth.sin_port));
+    DUMP_DEBUG(buf, recv_bytes);
 
     return (int) recv_bytes;
 }

@@ -8,8 +8,11 @@
 #include <stdlib.h>
 #include <signal.h>
 #include <getopt.h>
+#include <string.h>
+
 #include "device_handler.h"
 #include "event_thread.h"
+#include "log.h"
 
 static void
 sig_handler(int signo)

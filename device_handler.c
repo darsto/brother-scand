@@ -18,6 +18,7 @@
 #include "network.h"
 #include "data_channel.h"
 #include "snmp.h"
+#include "log.h"
 
 #define DEVICE_HANDLER_PORT 49976
 #define DEVICE_REGISTER_DURATION_SEC 360
@@ -145,26 +146,26 @@ device_handler_add_device(struct device_config *config)
 
     conn = network_open(NETWORK_TYPE_UDP, config->timeout);
     if (conn == NULL) {
-        fprintf(stderr, "Could not init a connection for device %s.\n", config->ip);
+        LOG_ERR("Could not init a connection for device %s.\n", config->ip);
         return NULL;
     }
 
     if (network_bind(conn, htons(DEVICE_HANDLER_PORT)) != 0) {
-        fprintf(stderr, "Could not bind device connection to port %d.\n",
+        LOG_ERR("Could not bind device connection to port %d.\n",
                 DEVICE_HANDLER_PORT);
         network_close(conn);
         return NULL;
     }
 
     if (network_reconnect(conn, inet_addr(config->ip), htons(SNMP_PORT))) {
-        fprintf(stderr, "Could not connection to device at %s:%d.\n",
+        LOG_ERR("Could not connection to device at %s:%d.\n",
                 config->ip, SNMP_PORT);
         network_close(conn);
     }
 
     dev = calloc(1, sizeof(*dev));
     if (dev == NULL) {
-        fprintf(stderr, "Could not calloc memory for device at %s.\n", config->ip);
+        LOG_ERR("Could not calloc memory for device at %s.\n", config->ip);
         network_close(conn);
         return NULL;
     }
@@ -175,12 +176,12 @@ device_handler_add_device(struct device_config *config)
             break;
         }
 
-        fprintf(stderr, "Warn: device at %s is currently unreachable. Retry %d/3.\n",
+        LOG_WARN("Warn: device at %s is currently unreachable. Retry %d/3.\n",
                 config->ip, i + 1);
     }
 
     if (i == 3) {
-        fprintf(stderr, "Error: device at %s is unreachable.\n", config->ip);
+        LOG_ERR("Error: device at %s is unreachable.\n", config->ip);
         network_close(conn);
         return NULL;
     }
@@ -189,7 +190,7 @@ device_handler_add_device(struct device_config *config)
     dev->config = config;
     dev->channel = data_channel_create(config);
     if (dev->channel == NULL) {
-        fprintf(stderr, "Failed to create data_channel for device %s.\n", config->ip);
+        LOG_ERR("Failed to create data_channel for device %s.\n", config->ip);
         return NULL;
     }
 
@@ -213,7 +214,7 @@ device_handler_loop(void *arg)
             dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
             dev->status = snmp_get_printer_status(dev->conn, g_buf, sizeof(g_buf));
             if (dev->status != 10001) {
-                fprintf(stderr, "Warn: device at %s is currently unreachable.\n", dev->config->ip);
+                LOG_WARN("Warn: device at %s is currently unreachable.\n", dev->config->ip);
             }
         }
 
@@ -236,7 +237,7 @@ device_handler_loop(void *arg)
 
     rc = network_get_client_ip(g_dev_handler.button_conn, client_ip);
     if (rc < 0) {
-        fprintf(stderr, "Warn: Couldn't stringify IP address we just received message from.\n");
+        LOG_ERR("Invalid client IP. (IPv6 not supported yet)\n");
         goto out;
     }
 
@@ -253,7 +254,7 @@ device_handler_loop(void *arg)
         }
     }
 
-    fprintf(stderr, "Warn: Received scan button event from unknown device %s.\n", client_ip);
+    LOG_WARN("Received scan button event from unknown device %s.\n", client_ip);
 
 out:
     sleep(1);
@@ -281,28 +282,28 @@ device_handler_init(const char *config_path)
 
     TAILQ_FOREACH(dev_config, &g_config.devices, tailq) {
         if (device_handler_add_device(dev_config) == NULL) {
-            fprintf(stderr, "Error: could not load device '%s'.\n", dev_config->ip);
+            LOG_ERR("Could not load device '%s'.\n", dev_config->ip);
             return;
         }
     }
 
     g_dev_handler.button_conn = network_open(NETWORK_TYPE_UDP, BUTTON_HANDLER_NETWORK_TIMEOUT);
     if (g_dev_handler.button_conn == NULL) {
-        fprintf(stderr, "Fatal: Could not setup button handler connection at %s.\n",
-                g_config.local_ip);
+        LOG_FATAL("Could not setup button handler connection at %s.\n",
+                  g_config.local_ip);
         return;
     }
 
     if (network_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
-	fprintf(stderr, "Fatal: Could not bind button handler socket to %s:%d.\n",
-		g_config.local_ip, BUTTON_HANDLER_PORT);
+        LOG_FATAL("Could not bind button handler socket to %s:%d.\n",
+	              g_config.local_ip, BUTTON_HANDLER_PORT);
 	return;
     }
 
     g_dev_handler.thread = event_thread_create("device_handler", device_handler_loop,
                                                device_handler_stop, NULL);
     if (g_dev_handler.thread == NULL) {
-        fprintf(stderr, "Fatal: could not init device_handler thread.\n");
+        LOG_FATAL("Could not init device_handler thread.\n");
         network_close(g_dev_handler.button_conn);
         return;
     }

@@ -7,6 +7,31 @@
 #include <ctype.h>
 #include "log.h"
 
+static const char *level_names[] = {
+        [LEVEL_DEBUG] = "DEBUG",
+        [LEVEL_WARN]  = "WARN",
+        [LEVEL_ERR]   = "ERR",
+        [LEVEL_FATAL] = "FATAL",
+};
+
+static int g_loglevel = LEVEL_DEBUG;
+
+void log_printf(int level, const char *file, int line, const char *fmt, ...)
+{
+    va_list args;
+
+    if (level < g_loglevel) {
+        return;
+    }
+
+    fprintf(stderr, "%-5s %s:%d: ", level_names[level], file, line);
+
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+}
+
+
 static char
 to_printable(int n)
 {
@@ -69,13 +94,17 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
 }
 
 void
-hexdump(const char *title, const void *data, size_t len)
+hexdump(int level, const void *data, size_t len)
 {
     const char *data_ptr = data;
     const char *data_start = data_ptr;
     const char *data_end = data_ptr + len;
 
-    printf("%s = {\n", title);
+    if (level < g_loglevel) {
+        return;
+    }
+
+    printf("{\n");
     while (data_ptr < data_end) {
         data_ptr += hexdump_line(data_ptr, data_start, data_end);
     }
