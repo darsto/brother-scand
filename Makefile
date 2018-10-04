@@ -14,9 +14,9 @@ OBJECTS = $(patsubst %.c, build/%.o, $(SOURCES))
 DEPS := $(OBJECTS:.o=.d)
 EXECUTABLE = build/brother-scand
 
--include $(DEPS)
-
 all: $(SOURCES) $(EXECUTABLE)
+
+-include $(DEPS)
 
 $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(OBJECTS) -o $@ $(LDFLAGS)
