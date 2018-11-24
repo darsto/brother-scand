@@ -38,7 +38,6 @@ struct device_config {
 
 struct brother_config {
     char hostname[CONFIG_HOSTNAME_LENGTH];
-    char local_ip[16];
     TAILQ_HEAD(, device_config) devices;
 };
 

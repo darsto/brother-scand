@@ -25,6 +25,7 @@ int brother_conn_sendto(struct brother_conn *conn, const void *buf, size_t len,
                    in_addr_t dest_addr, in_port_t dest_port);
 int brother_conn_receive(struct brother_conn *conn, void *buf, size_t len);
 int brother_conn_get_client_ip(struct brother_conn *conn, char ip[16]);
+int brother_conn_get_local_ip(struct brother_conn *conn, char ip[16]);
 void brother_conn_close(struct brother_conn *conn);
 
 #endif //BROTHER_CONNECTION_H

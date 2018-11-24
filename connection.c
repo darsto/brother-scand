@@ -122,10 +122,6 @@ brother_conn_reconnect(struct brother_conn *conn, in_addr_t dest_addr,
     conn->sin_oth.sin_family = AF_INET;
     conn->sin_oth.sin_port = dest_port;
 
-    if (conn->type == BROTHER_CONNECTION_TYPE_UDP) {
-        return 0;
-    }
-
     for (retries = 0; retries < 3; ++retries) {
         usleep(1000 * 25);
         if (connect(conn->fd, (struct sockaddr *)&conn->sin_oth,
@@ -247,6 +243,21 @@ brother_conn_get_client_ip(struct brother_conn *conn, char ip[16])
     return ret != NULL ? 0 : -1;
 }
 
+int
+brother_conn_get_local_ip(struct brother_conn *conn, char ip[16])
+{
+    const char *ret;
+    struct sockaddr_in name;
+    socklen_t namelen = sizeof(name);
+
+    if (getsockname(conn->fd, (struct sockaddr *) &name, &namelen) != 0) {
+        perror("getsockname");
+        return -1;
+    }
+
+    ret = inet_ntop(AF_INET, &name.sin_addr, ip, 16);
+    return ret != NULL ? 0 : -1;
+}
 
 void
 brother_conn_close(struct brother_conn *conn)

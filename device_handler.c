@@ -28,6 +28,7 @@ struct device {
     in_addr_t ip;
     struct data_channel *channel;
     int status;
+    char local_ip[16];
     time_t next_ping_time;
     time_t next_register_time;
     const struct device_config *config;
@@ -92,7 +93,7 @@ encode_password(const char *pass, char *buf)
 }
 
 static int
-register_scanner_driver(struct device *dev, bool enabled)
+register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
 {
     const char *functions[4] = { 0 };
     char msg[CONFIG_SCAN_MAX_FUNCS][256];
@@ -120,7 +121,7 @@ register_scanner_driver(struct device *dev, bool enabled)
                       "CC=1;",
                       g_config.hostname,
                       g_scan_func_str[i],
-                      g_config.local_ip, BUTTON_HANDLER_PORT,
+                      local_ip, BUTTON_HANDLER_PORT,
                       atomic_fetch_add(&g_appnum, 1),
                       DEVICE_REGISTER_DURATION_SEC,
                       pass_buf);
@@ -143,12 +144,30 @@ device_handler_add_device(struct device_config *config)
 {
     struct device *dev;
     struct brother_conn *conn;
-    int status, i;
+    int status, rc, i;
+    char local_ip[16];
 
-    dev = calloc(1, sizeof(*dev));
-    if (dev == NULL) {
-        LOG_ERR("Could not calloc memory for device at %s.\n", config->ip);
+    conn = brother_conn_open(BROTHER_CONNECTION_TYPE_UDP,
+                           BUTTON_HANDLER_NETWORK_TIMEOUT);
+    if (conn == NULL) {
+        LOG_ERR("Cannot open an UDP socket for device %s.\n", config->ip);
         return NULL;
+    }
+
+    rc = brother_conn_reconnect(conn, inet_addr(config->ip), htons(161));
+    if (rc != 0) {
+        LOG_ERR("Can't connect to %s:161.\n", config->ip);
+        brother_conn_close(conn);
+        return NULL;
+    }
+
+    rc = brother_conn_get_local_ip(conn, local_ip);
+    brother_conn_close(conn);
+    if (rc != 0) {
+        LOG_ERR("Can't get the local ip address that connected to %s:161.\n",
+                config->ip);
+        return NULL;
+
     }
 
     for (i = 0; i < 3; ++i) {
@@ -165,14 +184,23 @@ device_handler_add_device(struct device_config *config)
 
     if (i == 3) {
         LOG_ERR("Error: device at %s is unreachable.\n", config->ip);
+        free(dev);
+        return NULL;
+    }
+
+    dev = calloc(1, sizeof(*dev));
+    if (dev == NULL) {
+        LOG_ERR("Could not calloc memory for device at %s.\n", config->ip);
         return NULL;
     }
 
     dev->ip = inet_addr(config->ip);
+    snprintf(dev->local_ip, sizeof(dev->local_ip), "%s", local_ip);
     dev->config = config;
     dev->channel = data_channel_create(config);
     if (dev->channel == NULL) {
         LOG_ERR("Failed to create data_channel for device %s.\n", config->ip);
+        free(dev);
         return NULL;
     }
 
@@ -210,7 +238,7 @@ device_handler_loop(void *arg)
         if (difftime(time_now, dev->next_register_time) > 0) {
             /* only register once per DEVICE_REGISTER_DURATION_SEC */
             dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
-            register_scanner_driver(dev, true);
+            register_scanner_driver(dev, dev->local_ip, true);
         }
     }
 
@@ -249,10 +277,14 @@ static void
 device_handler_stop(void *arg)
 {
     struct device *dev;
+    char ip[16];
 
     while ((dev = TAILQ_FIRST(&g_dev_handler.devices))) {
         TAILQ_REMOVE(&g_dev_handler.devices, dev, tailq);
-        register_scanner_driver(dev, false);
+        snmp_get_printer_status(g_dev_handler.button_conn,
+                                g_buf, sizeof(g_buf), dev->ip);
+        brother_conn_get_local_ip(g_dev_handler.button_conn, ip);
+        register_scanner_driver(dev, ip, false);
         free(dev);
     }
 }
@@ -268,14 +300,12 @@ device_handler_init(const char *config_path)
     g_dev_handler.button_conn = brother_conn_open(BROTHER_CONNECTION_TYPE_UDP,
                                 BUTTON_HANDLER_NETWORK_TIMEOUT);
     if (g_dev_handler.button_conn == NULL) {
-        LOG_FATAL("Failed to open a socket for the button handler.\n",
-                  g_config.local_ip);
+        LOG_FATAL("Failed to open a socket for the button handler.\n");
         return;
     }
 
     if (brother_conn_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
-        LOG_FATAL("Could not bind button handler socket to %s:%d.\n",
-                  g_config.local_ip, BUTTON_HANDLER_PORT);
+        LOG_FATAL("Could not bind to the button handler port %d.\n", BUTTON_HANDLER_PORT);
         return;
     }
 

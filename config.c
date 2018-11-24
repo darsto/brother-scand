@@ -19,49 +19,6 @@ const char *g_scan_func_str[CONFIG_SCAN_MAX_FUNCS] = {
     [CONFIG_SCAN_FUNC_FILE] = "FILE",
 };
 
-static int
-load_local_ip(void)
-{
-    struct sockaddr_in serv;
-    int rc = -1;
-
-    int sock = socket(AF_INET, SOCK_DGRAM, 0);
-    if (sock < 0) {
-        perror("socket");
-        return -1;
-    }
-
-    memset(&serv, 0, sizeof(serv));
-    serv.sin_family = AF_INET;
-    serv.sin_addr.s_addr = inet_addr("8.8.8.8"); // google dns server
-    serv.sin_port = htons(53);
-
-    if (connect(sock, (const struct sockaddr *) &serv, sizeof(serv)) != 0) {
-        perror("connect");
-        goto out;
-    }
-
-    struct sockaddr_in name;
-    socklen_t namelen = sizeof(name);
-    if (getsockname(sock, (struct sockaddr *) &name, &namelen) != 0) {
-        perror("getsockname");
-        goto out;
-    }
-
-    const char *ret = inet_ntop(AF_INET, &name.sin_addr, g_config.local_ip,
-                                sizeof(g_config.local_ip));
-
-    if (ret) {
-        rc = 0;
-    } else {
-        perror("inet_ntop");
-    }
-
-out:
-    close(sock);
-    return rc;
-}
-
 static void
 init_default_device_config(struct device_config *dev_config)
 {
@@ -107,10 +64,6 @@ config_init(const char *config_path)
     int rc = -1, param_count = 0, i;
 
     TAILQ_INIT(&g_config.devices);
-    if (load_local_ip() != 0) {
-        fprintf(stderr, "Fatal: could not get local ip address.\n");
-        return -1;
-    }
 
     strcpy(g_config.hostname, "brother-open");
 
