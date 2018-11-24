@@ -10,9 +10,9 @@
 #include <stdatomic.h>
 #include <stdbool.h>
 #include "ber/snmp.h"
-#include "network.h"
 #include "log.h"
 #include "config.h"
+#include "connection.h"
 
 #define SNMP_PORT 161
 
@@ -35,7 +35,7 @@ init_msg_header(struct snmp_msg_header *msg_header, const char *community,
 }
 
 int
-snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len,
+snmp_get_printer_status(struct brother_conn *conn, uint8_t *buf, size_t buf_len,
                         in_addr_t dest_addr)
 {
     uint8_t *buf_end = buf + buf_len - 1;
@@ -54,13 +54,13 @@ snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len,
     out = snmp_encode_msg(buf_end, &msg_header, varbind_num, &varbind);
     snmp_len = buf_end - out + 1;
 
-    msg_len = network_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
+    msg_len = brother_conn_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
     if (msg_len < 0 || (size_t) msg_len != snmp_len) {
         perror("sendto");
         goto out;
     }
 
-    msg_len = network_receive(conn, buf, buf_len);
+    msg_len = brother_conn_receive(conn, buf, buf_len);
     if (msg_len < 0) {
         perror("recvfrom");
         goto out;
@@ -79,7 +79,7 @@ out:
 }
 
 int
-snmp_register_scanner_driver(struct network_conn *conn, bool enabled,
+snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
                              uint8_t *buf, size_t buf_len,
                              const char **functions,
                              in_addr_t dest_addr)
@@ -117,13 +117,13 @@ snmp_register_scanner_driver(struct network_conn *conn, bool enabled,
     out = snmp_encode_msg(buf_end, &msg_header, varbind_num, varbind);
     snmp_len = buf_end - out + 1;
 
-    msg_len = network_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
+    msg_len = brother_conn_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
     if (msg_len < 0 || (size_t) msg_len != snmp_len) {
         perror("sendto");
         goto out;
     }
 
-    msg_len = network_receive(conn, buf, buf_len);
+    msg_len = brother_conn_receive(conn, buf, buf_len);
     if (msg_len < 0) {
         perror("recvfrom");
         goto out;

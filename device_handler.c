@@ -15,7 +15,7 @@
 #include "device_handler.h"
 #include "event_thread.h"
 #include "config.h"
-#include "network.h"
+#include "connection.h"
 #include "data_channel.h"
 #include "snmp.h"
 #include "log.h"
@@ -35,7 +35,7 @@ struct device {
 };
 
 struct device_handler {
-    struct network_conn *button_conn;
+    struct brother_conn *button_conn;
     struct event_thread *thread;
     TAILQ_HEAD(, device) devices;
 };
@@ -142,7 +142,7 @@ struct device *
 device_handler_add_device(struct device_config *config)
 {
     struct device *dev;
-    struct network_conn *conn;
+    struct brother_conn *conn;
     int status, i;
 
     dev = calloc(1, sizeof(*dev));
@@ -215,12 +215,12 @@ device_handler_loop(void *arg)
     }
 
     /* try to receive scan event */
-    msg_len = network_receive(g_dev_handler.button_conn, g_buf, sizeof(g_buf));
+    msg_len = brother_conn_receive(g_dev_handler.button_conn, g_buf, sizeof(g_buf));
     if (msg_len < 0) {
         goto out;
     }
 
-    rc = network_get_client_ip(g_dev_handler.button_conn, client_ip);
+    rc = brother_conn_get_client_ip(g_dev_handler.button_conn, client_ip);
     if (rc < 0) {
         LOG_ERR("Invalid client IP. (IPv6 not supported yet)\n");
         goto out;
@@ -228,7 +228,7 @@ device_handler_loop(void *arg)
 
     TAILQ_FOREACH(dev, &g_dev_handler.devices, tailq) {
         if (strncmp(dev->config->ip, client_ip, 16) == 0) {
-            msg_len = network_send(g_dev_handler.button_conn, g_buf, msg_len);
+            msg_len = brother_conn_send(g_dev_handler.button_conn, g_buf, msg_len);
             if (msg_len < 0) {
                 perror("sendto");
                 goto out;
@@ -265,7 +265,7 @@ device_handler_init(const char *config_path)
     atomic_store(&g_appnum, 1);
     TAILQ_INIT(&g_dev_handler.devices);
 
-    g_dev_handler.button_conn = network_open(NETWORK_TYPE_UDP,
+    g_dev_handler.button_conn = brother_conn_open(BROTHER_CONNECTION_TYPE_UDP,
                                 BUTTON_HANDLER_NETWORK_TIMEOUT);
     if (g_dev_handler.button_conn == NULL) {
         LOG_FATAL("Failed to open a socket for the button handler.\n",
@@ -273,7 +273,7 @@ device_handler_init(const char *config_path)
         return;
     }
 
-    if (network_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
+    if (brother_conn_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
         LOG_FATAL("Could not bind button handler socket to %s:%d.\n",
                   g_config.local_ip, BUTTON_HANDLER_PORT);
         return;
@@ -290,7 +290,7 @@ device_handler_init(const char *config_path)
                            device_handler_stop, NULL);
     if (g_dev_handler.thread == NULL) {
         LOG_FATAL("Could not init device_handler thread.\n");
-        network_close(g_dev_handler.button_conn);
+        brother_conn_close(g_dev_handler.button_conn);
         return;
     }
 }

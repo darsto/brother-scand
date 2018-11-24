@@ -10,9 +10,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-int snmp_get_printer_status(struct network_conn *conn,
+int snmp_get_printer_status(struct brother_conn *conn,
                             uint8_t *buf, size_t buf_len, in_addr_t dest_addr);
-int snmp_register_scanner_driver(struct network_conn *conn, bool enabled,
+int snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
                                  uint8_t *buf, size_t buf_len,
                                  const char *functions[4], in_addr_t dest_addr);
 

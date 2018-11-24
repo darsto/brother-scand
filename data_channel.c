@@ -14,9 +14,10 @@
 #include <zconf.h>
 #include <errno.h>
 #include "data_channel.h"
+
+#include "connection.h"
 #include "event_thread.h"
 #include "log.h"
-#include "network.h"
 
 #define DATA_CHANNEL_CHUNK_MAX_SIZE 0x10000
 #define DATA_CHANNEL_CHUNK_HEADER_SIZE 0xC
@@ -25,7 +26,7 @@
 #define DATA_CHANNEL_TARGET_PORT 54921
 
 struct data_channel {
-    struct network_conn *conn;
+    struct brother_conn *conn;
     int (*process_cb)(struct data_channel *data_channel);
 
     FILE *tempfile;
@@ -375,7 +376,7 @@ receive_data(struct data_channel *data_channel)
     }
 
     for (; retries > 0; --retries) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf,
+        msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
                                   sizeof(data_channel->buf));
         if (msg_len > 0) {
             break;
@@ -411,7 +412,7 @@ receive_initial_data(struct data_channel *data_channel)
     int retries = data_channel->config->page_init_retries;
 
     for (; retries > 0; --retries) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf,
+        msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
                                   sizeof(data_channel->buf));
         if (msg_len > 0) {
             break;
@@ -456,7 +457,7 @@ exchange_params2(struct data_channel *data_channel)
     long tmp;
 
     for (retries = 0; retries < 2; ++retries) {
-        msg_len = network_receive(data_channel->conn, data_channel->buf,
+        msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
                                   sizeof(data_channel->buf));
         if (msg_len > 0) {
             break;
@@ -553,7 +554,7 @@ exchange_params2(struct data_channel *data_channel)
     *buf++ = 0x80; // end of message
 
     for (retries = 0; retries < 2; ++retries) {
-        msg_len = network_send(data_channel->conn, data_channel->buf, buf -
+        msg_len = brother_conn_send(data_channel->conn, data_channel->buf, buf -
                                data_channel->buf);
         if (msg_len > 0) {
             break;
@@ -579,7 +580,7 @@ exchange_params1(struct data_channel *data_channel)
     size_t str_len;
     int i;
 
-    msg_len = network_receive(data_channel->conn, data_channel->buf,
+    msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
                               sizeof(data_channel->buf));
     if (msg_len < 0) {
         LOG_ERR("%s: couldn't receive initial scan params\n",
@@ -661,7 +662,7 @@ exchange_params1(struct data_channel *data_channel)
 
     *buf++ = 0x80; // end of message
 
-    msg_len = network_send(data_channel->conn, data_channel->buf, buf -
+    msg_len = brother_conn_send(data_channel->conn, data_channel->buf, buf -
                            data_channel->buf);
     if (msg_len < 0) {
         LOG_ERR("Couldn't send initial scan params on data_channel %s\n",
@@ -678,13 +679,13 @@ init_connection(struct data_channel *data_channel)
 {
     int msg_len;
 
-    if (network_reconnect(data_channel->conn, inet_addr(data_channel->config->ip),
+    if (brother_conn_reconnect(data_channel->conn, inet_addr(data_channel->config->ip),
                           htons(DATA_CHANNEL_TARGET_PORT)) != 0) {
         LOG_ERR("Could not connect to scanner.\n");
         return -1;
     }
 
-    msg_len = network_receive(data_channel->conn, data_channel->buf,
+    msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
                               sizeof(data_channel->buf));
     if (msg_len < 0) {
         LOG_ERR("Couldn't receive welcome message on data_channel %s\n",
@@ -698,7 +699,7 @@ init_connection(struct data_channel *data_channel)
         return -1;
     }
 
-    msg_len = network_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
+    msg_len = brother_conn_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
     if (msg_len < 0) {
         LOG_ERR("Couldn't send welcome message on data_channel %s\n",
                 data_channel->config->ip);
@@ -739,7 +740,7 @@ data_channel_stop(void *arg)
         data_channel->tempfile = NULL;
     }
 
-    network_close(data_channel->conn);
+    brother_conn_close(data_channel->conn);
     free(data_channel);
 }
 
@@ -749,14 +750,14 @@ init_data_channel(struct data_channel *data_channel)
     data_channel->thread = event_thread_self();
     data_channel->process_cb = set_paused;
 
-    data_channel->conn = network_open(NETWORK_TYPE_TCP, data_channel->config->timeout);
+    data_channel->conn = brother_conn_open(BROTHER_CONNECTION_TYPE_TCP, data_channel->config->timeout);
     if (data_channel->conn == NULL) {
         LOG_ERR("Failed to init a data_channel.\n");
         event_thread_stop(data_channel->thread);
         return 0;
     }
 
-    if (network_bind(data_channel->conn, htons(DATA_CHANNEL_LOCAL_PORT)) != 0) {
+    if (brother_conn_bind(data_channel->conn, htons(DATA_CHANNEL_LOCAL_PORT)) != 0) {
         LOG_ERR("Failed to bind a data_channel to port %d.\n",
                 DATA_CHANNEL_LOCAL_PORT);
         event_thread_stop(data_channel->thread);

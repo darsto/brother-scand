@@ -7,7 +7,7 @@ CFLAGS += -std=gnu11 -pedantic -Wall -Wextra \
 	-Wcast-qual -Wshadow -Wunreachable-code -Wfloat-equal \
 	-Wstrict-aliasing=2 -Wredundant-decls -Wold-style-definition
 LDFLAGS = -pthread
-SOURCES = main.c con_queue.c log.c device_handler.c event_thread.c config.c network.c \
+SOURCES = main.c con_queue.c log.c device_handler.c event_thread.c config.c connection.c \
 	data_channel.c snmp.c
 SOURCES += ber/ber.c ber/snmp.c
 OBJECTS = $(patsubst %.c, build/%.o, $(SOURCES))
