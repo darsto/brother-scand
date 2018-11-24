@@ -146,6 +146,39 @@ network_reconnect(struct network_conn *conn, in_addr_t dest_addr,
 }
 
 int
+network_sendto(struct network_conn *conn, const void *buf, size_t len,
+               in_addr_t dest_addr, in_port_t dest_port)
+{
+    struct sockaddr_in sin_oth;
+    ssize_t sent_bytes;
+
+    if (conn->type == NETWORK_TYPE_TCP) {
+        LOG_ERR("sendto can't be used with TCP sockets\n");
+        return -1;
+    }
+
+    sin_oth.sin_addr.s_addr = dest_addr;
+    sin_oth.sin_family = AF_INET;
+    sin_oth.sin_port = dest_port;
+
+    do {
+        sent_bytes = sendto(conn->fd, buf, len, 0,
+                            (struct sockaddr *) &sin_oth,
+                            sizeof(sin_oth));
+    } while (errno == EINTR);
+
+    if (sent_bytes < 0) {
+        perror("sendto");
+    }
+
+    LOG_DEBUG("sent %zd/%zu bytes to %d", sent_bytes, len,
+              ntohs(sin_oth.sin_port));
+    DUMP_DEBUG(buf, len);
+
+    return (int) sent_bytes;
+}
+
+int
 network_send(struct network_conn *conn, const void *buf, size_t len)
 {
     ssize_t sent_bytes;

@@ -14,6 +14,8 @@
 #include "log.h"
 #include "config.h"
 
+#define SNMP_PORT 161
+
 static atomic_int g_request_id;
 static uint32_t g_brInfoPrinterUStatusOID[] =
 { 1, 3, 6, 1, 4, 1, 2435, 2, 3, 9, 4, 2, 1, 5, 5, 6, 0, SNMP_MSG_OID_END };
@@ -33,7 +35,8 @@ init_msg_header(struct snmp_msg_header *msg_header, const char *community,
 }
 
 int
-snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len)
+snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len,
+                        in_addr_t dest_addr)
 {
     uint8_t *buf_end = buf + buf_len - 1;
     struct snmp_msg_header msg_header = {0};
@@ -51,7 +54,7 @@ snmp_get_printer_status(struct network_conn *conn, uint8_t *buf, size_t buf_len)
     out = snmp_encode_msg(buf_end, &msg_header, varbind_num, &varbind);
     snmp_len = buf_end - out + 1;
 
-    msg_len = network_send(conn, out, snmp_len);
+    msg_len = network_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
     if (msg_len < 0 || (size_t) msg_len != snmp_len) {
         perror("sendto");
         goto out;
@@ -78,7 +81,8 @@ out:
 int
 snmp_register_scanner_driver(struct network_conn *conn, bool enabled,
                              uint8_t *buf, size_t buf_len,
-                             const char **functions)
+                             const char **functions,
+                             in_addr_t dest_addr)
 {
     uint8_t *buf_end = buf + buf_len - 1;
 
@@ -113,7 +117,7 @@ snmp_register_scanner_driver(struct network_conn *conn, bool enabled,
     out = snmp_encode_msg(buf_end, &msg_header, varbind_num, varbind);
     snmp_len = buf_end - out + 1;
 
-    msg_len = network_send(conn, out, snmp_len);
+    msg_len = network_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
     if (msg_len < 0 || (size_t) msg_len != snmp_len) {
         perror("sendto");
         goto out;
