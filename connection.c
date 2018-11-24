@@ -16,20 +16,15 @@
 #include "connection.h"
 #include "log.h"
 
-#define MAX_NETWORK_CONNECTIONS 32
-
 struct brother_conn {
-    int fd;
     enum brother_connection_type type;
+    int fd;
     bool connected;
     bool is_stream;
     struct sockaddr_in sin_me;
     struct sockaddr_in sin_oth;
     struct timeval timeout;
 };
-
-static atomic_int g_conn_count;
-static struct brother_conn g_conns[MAX_NETWORK_CONNECTIONS];
 
 static int
 create_socket(struct brother_conn *conn, unsigned timeout_sec)
@@ -71,11 +66,12 @@ create_socket(struct brother_conn *conn, unsigned timeout_sec)
 struct brother_conn *
 brother_conn_open(enum brother_connection_type type, unsigned timeout_sec)
 {
-    int conn_id;
     struct brother_conn *conn;
 
-    conn_id = atomic_fetch_add(&g_conn_count, 1);
-    conn = &g_conns[conn_id];
+    conn = calloc(1, sizeof(*conn));
+    if (conn == NULL) {
+        return NULL;
+    }
 
     conn->type = type;
     if (create_socket(conn, timeout_sec) != 0) {
@@ -108,7 +104,8 @@ brother_conn_reconnect(struct brother_conn *conn, in_addr_t dest_addr,
     int retries;
 
     if (conn->connected) {
-        brother_conn_close(conn);
+        close(conn->fd);
+        conn->connected = false;
 
         if (create_socket(conn, (unsigned)conn->timeout.tv_sec) != 0) {
             return -1;
@@ -251,10 +248,9 @@ brother_conn_get_client_ip(struct brother_conn *conn, char ip[16])
 }
 
 
-int
+void
 brother_conn_close(struct brother_conn *conn)
 {
     close(conn->fd);
-    conn->connected = false;
-    return 0;
+    free(conn);
 }
