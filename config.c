@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include "config.h"
 
+struct brother_config g_config;
+
 const char *g_scan_func_str[CONFIG_SCAN_MAX_FUNCS] = {
     [CONFIG_SCAN_FUNC_IMAGE] = "IMAGE",
     [CONFIG_SCAN_FUNC_OCR] = "OCR",

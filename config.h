@@ -41,7 +41,7 @@ struct brother_config {
     TAILQ_HEAD(, device_config) devices;
 };
 
-struct brother_config g_config;
+extern struct brother_config g_config;
 extern const char *g_scan_func_str[CONFIG_SCAN_MAX_FUNCS];
 
 int config_init(const char *config_path);
