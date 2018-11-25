@@ -9,6 +9,7 @@
 
 static const char *level_names[] = {
     [LEVEL_DEBUG] = "DEBUG",
+    [LEVEL_INFO]  = "INFO",
     [LEVEL_WARN]  = "WARN",
     [LEVEL_ERR]   = "ERR",
     [LEVEL_FATAL] = "FATAL",
