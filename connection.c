@@ -12,6 +12,7 @@
 #include <memory.h>
 #include <errno.h>
 #include <arpa/inet.h>
+#include <poll.h>
 
 #include "connection.h"
 #include "log.h"
@@ -170,6 +171,23 @@ brother_conn_sendto(struct brother_conn *conn, const void *buf, size_t len,
     DUMP_DEBUG(buf, len);
 
     return (int) sent_bytes;
+}
+
+int
+brother_conn_poll(struct brother_conn *conn, unsigned timeout_sec)
+{
+    struct pollfd pfd = {};
+    int rc;
+
+    pfd.fd = conn->fd;
+    pfd.events = POLLIN | POLLERR | POLLHUP | POLLNVAL;
+
+    rc = poll(&pfd, 1, timeout_sec * 1000);
+    if (rc < 0) {
+        return rc;
+    }
+
+    return pfd.revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL);
 }
 
 int

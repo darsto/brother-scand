@@ -38,6 +38,7 @@ struct device {
 struct device_handler {
     struct brother_conn *button_conn;
     struct event_thread *thread;
+    struct brother_poll_group *devices_poll_group;
     TAILQ_HEAD(, device) devices;
 };
 
@@ -242,16 +243,21 @@ device_handler_loop(void *arg)
         }
     }
 
+    rc = brother_conn_poll(g_dev_handler.button_conn, 1);
+    if (rc <= 0) {
+        return;
+    }
+
     /* try to receive scan event */
     msg_len = brother_conn_receive(g_dev_handler.button_conn, g_buf, sizeof(g_buf));
     if (msg_len < 0) {
-        goto out;
+        return;
     }
 
     rc = brother_conn_get_client_ip(g_dev_handler.button_conn, client_ip);
     if (rc < 0) {
         LOG_ERR("Invalid client IP. (IPv6 not supported yet)\n");
-        goto out;
+        return;
     }
 
     TAILQ_FOREACH(dev, &g_dev_handler.devices, tailq) {
@@ -259,18 +265,15 @@ device_handler_loop(void *arg)
             msg_len = brother_conn_send(g_dev_handler.button_conn, g_buf, msg_len);
             if (msg_len < 0) {
                 perror("sendto");
-                goto out;
+                return;
             }
 
             data_channel_kick(dev->channel);
-            goto out;
+            return;
         }
     }
 
     LOG_WARN("Received scan button event from unknown device %s.\n", client_ip);
-
-out:
-    sleep(1);
 }
 
 static void
@@ -306,6 +309,7 @@ device_handler_init(const char *config_path)
 
     if (brother_conn_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
         LOG_FATAL("Could not bind to the button handler port %d.\n", BUTTON_HANDLER_PORT);
+        brother_conn_close(g_dev_handler.button_conn);
         return;
     }
 
