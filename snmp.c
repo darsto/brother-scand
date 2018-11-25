@@ -57,24 +57,29 @@ snmp_get_printer_status(struct brother_conn *conn, uint8_t *buf, size_t buf_len,
     msg_len = brother_conn_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
     if (msg_len < 0 || (size_t) msg_len != snmp_len) {
         perror("sendto");
-        goto out;
+        return -1;
+    }
+
+    rc = brother_conn_poll(conn, 3);
+    if (rc <= 0) {
+        LOG_ERR("Failed to receive SNMP status reponse.\n");
+        return -1;
     }
 
     msg_len = brother_conn_receive(conn, buf, buf_len);
-    if (msg_len < 0) {
+    if (msg_len < 6) {
         perror("recvfrom");
-        goto out;
+        return -1;
     }
 
-    snmp_decode_msg(buf, buf_len, &msg_header, &varbind_num, &varbind);
+    snmp_decode_msg(buf, msg_len, &msg_header, &varbind_num, &varbind);
     if (msg_header.error_index != 0 && msg_header.error_status != 0) {
-        fprintf(stderr, "Received invalid printer status SNMP response\n");
+        LOG_ERR("Received invalid printer status SNMP response\n");
         DUMP_ERR(buf, (size_t) msg_len);
-        goto out;
+        return -1;
     }
 
     rc = (int) varbind.value.i;
-out:
     return rc;
 }
 
@@ -120,30 +125,34 @@ snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
     msg_len = brother_conn_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
     if (msg_len < 0 || (size_t) msg_len != snmp_len) {
         perror("sendto");
-        goto out;
+        return -1;
+    }
+
+    rc = brother_conn_poll(conn, 3);
+    if (rc <= 0) {
+        LOG_ERR("Failed to receive SNMP status reponse.\n");
+        return -1;
     }
 
     msg_len = brother_conn_receive(conn, buf, buf_len);
-    if (msg_len < 0) {
+    if (msg_len < 6) {
         perror("recvfrom");
-        goto out;
+        return -1;
     }
 
     if (!enabled) {
         /* unregister msg is not implemented for some scanners,
          * ignore all errors */
-        goto out;
+        return 0;
     }
 
-    snmp_decode_msg(buf, buf_len, &msg_header, &varbind_num, varbind);
+    snmp_decode_msg(buf, msg_len, &msg_header, &varbind_num, varbind);
     if (msg_header.error_index != 0 && msg_header.error_status != 0) {
-        fprintf(stderr, "Received invalid register SNMP response\n");
+        LOG_ERR("Received invalid register SNMP response\n");
         DUMP_ERR(buf, (size_t) msg_len);
-        goto out;
+        return -1;
     }
 
     rc = msg_len;
-
-out:
     return rc;
 }

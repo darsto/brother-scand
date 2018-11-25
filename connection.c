@@ -182,7 +182,9 @@ brother_conn_poll(struct brother_conn *conn, unsigned timeout_sec)
     pfd.fd = conn->fd;
     pfd.events = POLLIN | POLLERR | POLLHUP | POLLNVAL;
 
-    rc = poll(&pfd, 1, timeout_sec * 1000);
+    do {
+        rc = poll(&pfd, 1, timeout_sec * 1000);
+    } while (rc == -EINTR);
     if (rc < 0) {
         return rc;
     }

@@ -171,19 +171,11 @@ device_handler_add_device(struct device_config *config)
 
     }
 
-    for (i = 0; i < 3; ++i) {
-        status = snmp_get_printer_status(g_dev_handler.button_conn,
-                                         g_buf, sizeof(g_buf),
-                                         inet_addr(config->ip));
-        if (status == 10001) {
-            break;
-        }
+    status = snmp_get_printer_status(g_dev_handler.button_conn,
+                                     g_buf, sizeof(g_buf),
+                                     inet_addr(config->ip));
 
-        LOG_WARN("Warn: device at %s is currently unreachable. Retry %d/3.\n",
-                 config->ip, i + 1);
-    }
-
-    if (i == 3) {
+    if (status != 10001) {
         LOG_ERR("Error: device at %s is unreachable.\n", config->ip);
         free(dev);
         return NULL;
