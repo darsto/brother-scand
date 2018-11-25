@@ -17,8 +17,8 @@
 #define CONFIG_SCAN_FUNC_EMAIL 2
 #define CONFIG_SCAN_FUNC_FILE 3
 #define CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC 3
-#define CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES 5
-#define CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES 20
+#define CONFIG_NETWORK_DEFAULT_PAGE_INIT_TIMEOUT 5
+#define CONFIG_NETWORK_DEFAULT_PAGE_FINISH_TIMEOUT 20
 
 struct scan_param {
     char id;
@@ -29,8 +29,8 @@ struct device_config {
     char *ip;
     char *password;
     unsigned timeout;
-    unsigned page_init_retries;
-    unsigned page_finish_retries;
+    unsigned page_init_timeout;
+    unsigned page_finish_timeout;
     struct scan_param scan_params[CONFIG_SCAN_MAX_PARAMS];
     char *scan_funcs[CONFIG_SCAN_MAX_FUNCS];
     TAILQ_ENTRY(device_config) tailq;

@@ -366,25 +366,25 @@ process_data(struct data_channel *data_channel, uint8_t *buf, int msg_len)
 static int
 receive_data(struct data_channel *data_channel)
 {
-    int msg_len, retries = 1;
+    int msg_len;
     int rc;
 
     if (data_channel->tempfile != NULL &&
         data_channel->page_data.remaining_chunk_bytes == 0) {
-        /* waiting for sensor rail to return */
-        retries = data_channel->config->page_finish_retries;
     }
 
-    for (; retries > 0; --retries) {
-        msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
-                                  sizeof(data_channel->buf));
-        if (msg_len > 0) {
-            break;
-        }
+    /* waiting for the sensor rail to return */
+    rc = brother_conn_poll(data_channel->conn, data_channel->config->page_finish_timeout);
+    if (rc <= 0) {
+        LOG_ERR("Couldn't receive final data packet on data_channel %s\n",
+                data_channel->config->ip);
+        return -1;
     }
 
-    if (retries == 0) {
-        LOG_ERR("Couldn't receive data packet on data_channel %s\n",
+    msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
+                                   sizeof(data_channel->buf));
+    if (msg_len < 1) {
+        LOG_ERR("Failed to receive data packet on data_channel %s\n",
                 data_channel->config->ip);
         return -1;
     }
@@ -409,17 +409,23 @@ static int
 receive_initial_data(struct data_channel *data_channel)
 {
     int msg_len = 0, rc;
-    int retries = data_channel->config->page_init_retries;
 
-    for (; retries > 0; --retries) {
-        msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
-                                  sizeof(data_channel->buf));
-        if (msg_len > 0) {
-            break;
-        }
+    rc = brother_conn_poll(data_channel->conn, data_channel->config->page_init_timeout);
+    if (rc <= 0) {
+        /* no more documents to scan */
+        data_channel_pause(data_channel);
+        return -1;
     }
 
-    if (retries == 0 || (msg_len == 1 && data_channel->buf[0] == 0x80)) {
+    msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
+                              sizeof(data_channel->buf));
+    if (msg_len < 1) {
+        LOG_ERR("Couldn't receive initial data packet on data_channel %s\n",
+                data_channel->config->ip);
+        return -1;
+    }
+
+    if (msg_len == 1 && data_channel->buf[0] == 0x80) {
         /* no more documents to scan */
         data_channel_pause(data_channel);
         return 0;
@@ -452,20 +458,21 @@ exchange_params2(struct data_channel *data_channel)
     struct scan_param *param;
     uint8_t *buf, *buf_end;
     long recv_params[7];
-    int msg_len, retries;
+    int msg_len, rc;
     size_t i, len;
     long tmp;
 
-    for (retries = 0; retries < 2; ++retries) {
-        msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
-                                  sizeof(data_channel->buf));
-        if (msg_len > 0) {
-            break;
-        }
+    rc = brother_conn_poll(data_channel->conn, 3);
+    if (rc <= 0) {
+        LOG_ERR("Couldn't receive scan params on data_channel %s\n",
+                data_channel->config->ip);
+        return -1;
     }
 
-    if (retries == 2) {
-        LOG_ERR("Couldn't receive scan params on data_channel %s\n",
+    msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
+                                  sizeof(data_channel->buf));
+    if (msg_len < 5) {
+        LOG_ERR("Failed to receive scan params on data_channel %s\n",
                 data_channel->config->ip);
         return -1;
     }
@@ -553,15 +560,9 @@ exchange_params2(struct data_channel *data_channel)
 
     *buf++ = 0x80; // end of message
 
-    for (retries = 0; retries < 2; ++retries) {
-        msg_len = brother_conn_send(data_channel->conn, data_channel->buf, buf -
-                               data_channel->buf);
-        if (msg_len > 0) {
-            break;
-        }
-    }
-
-    if (retries == 2) {
+    msg_len = brother_conn_send(data_channel->conn, data_channel->buf, buf -
+                           data_channel->buf);
+    if (msg_len < 0 || (unsigned) msg_len != buf - data_channel->buf) {
         LOG_ERR("Couldn't send scan params on data_channel %s\n",
                 data_channel->config->ip);
         return -1;
@@ -578,12 +579,19 @@ exchange_params1(struct data_channel *data_channel)
     uint8_t *buf, *buf_end;
     int msg_len;
     size_t str_len;
-    int i;
+    int i, rc;
+
+    rc = brother_conn_poll(data_channel->conn, 2);
+    if (rc <= 0) {
+        LOG_ERR("%s: couldn't receive initial scan params\n",
+                data_channel->config->ip);
+        return -1;
+    }
 
     msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
                               sizeof(data_channel->buf));
-    if (msg_len < 0) {
-        LOG_ERR("%s: couldn't receive initial scan params\n",
+    if (msg_len < 5) {
+        LOG_ERR("%s: failed to receive initial scan params\n",
                 data_channel->config->ip);
         return -1;
     }
@@ -677,7 +685,7 @@ exchange_params1(struct data_channel *data_channel)
 static int
 init_connection(struct data_channel *data_channel)
 {
-    int msg_len;
+    int rc, msg_len;
 
     if (brother_conn_reconnect(data_channel->conn, inet_addr(data_channel->config->ip),
                           htons(DATA_CHANNEL_TARGET_PORT)) != 0) {
@@ -685,10 +693,17 @@ init_connection(struct data_channel *data_channel)
         return -1;
     }
 
+    rc = brother_conn_poll(data_channel->conn, 3);
+    if (rc <= 0) {
+        LOG_ERR("Couldn't receive welcome message on data_channel %s\n",
+                data_channel->config->ip);
+        return -1;
+    }
+
     msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
                               sizeof(data_channel->buf));
-    if (msg_len < 0) {
-        LOG_ERR("Couldn't receive welcome message on data_channel %s\n",
+    if (msg_len < 1) {
+        LOG_ERR("Failed to receive welcome message on data_channel %s\n",
                 data_channel->config->ip);
         return -1;
     }

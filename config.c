@@ -28,8 +28,8 @@ init_default_device_config(struct device_config *dev_config)
     int i = 0;
 
     dev_config->timeout = CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC;
-    dev_config->page_init_retries = CONFIG_NETWORK_DEFAULT_PAGE_INIT_RETRIES;
-    dev_config->page_finish_retries = CONFIG_NETWORK_DEFAULT_PAGE_FINISH_RETRIES;
+    dev_config->page_init_timeout = CONFIG_NETWORK_DEFAULT_PAGE_INIT_TIMEOUT;
+    dev_config->page_finish_timeout = CONFIG_NETWORK_DEFAULT_PAGE_FINISH_TIMEOUT;
 
 #define ADD_SCAN_PARAM(ID, VAL) \
     param = &dev_config->scan_params[i++]; \
@@ -102,20 +102,20 @@ config_init(const char *config_path)
             }
 
             dev_config->password = strdup(var_str);
-        } else if (sscanf((char *) buf, "network.page.init.retry %u", &var_uint) == 1) {
+        } else if (sscanf((char *) buf, "network.page.init.timeout %u", &var_uint) == 1) {
             if (dev_config == NULL) {
-                fprintf(stderr, "Error: network.page.init.retry specified without a device.\n");
+                fprintf(stderr, "Error: network.page.init.timeout specified without a device.\n");
                 goto out;
             }
 
-            dev_config->page_init_retries = var_uint;
-        } else if (sscanf((char *) buf, "network.page.finish.retry %u", &var_uint) == 1) {
+            dev_config->page_init_timeout = var_uint;
+        } else if (sscanf((char *) buf, "network.page.finish.timeout %u", &var_uint) == 1) {
             if (dev_config == NULL) {
-                fprintf(stderr, "Error: network.page.finish.retry specified without a device.\n");
+                fprintf(stderr, "Error: network.page.finish.timeout specified without a device.\n");
                 goto out;
             }
 
-            dev_config->page_finish_retries = var_uint;
+            dev_config->page_finish_timeout = var_uint;
         } else if (sscanf((char *) buf, "scan.param %c %15s", &var_char, var_str) == 2) {
             if (dev_config == NULL) {
                 fprintf(stderr, "Error: scan.param specified without a device.\n");
