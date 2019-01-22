@@ -176,7 +176,7 @@ brother_conn_sendto(struct brother_conn *conn, const void *buf, size_t len,
 int
 brother_conn_poll(struct brother_conn *conn, unsigned timeout_sec)
 {
-    struct pollfd pfd = {};
+    struct pollfd pfd;
     int rc;
 
     pfd.fd = conn->fd;

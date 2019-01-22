@@ -177,7 +177,6 @@ device_handler_add_device(struct device_config *config)
 
     if (status != 10001) {
         LOG_ERR("Error: device at %s is unreachable.\n", config->ip);
-        free(dev);
         return NULL;
     }
 

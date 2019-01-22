@@ -42,6 +42,8 @@ image data within the same (original) connection. But only on Windows... Well, n
 ```
 git clone https://github.com/darsto/brother-scanner-driver.git
 cd brother-scanner-driver
+git submodule init
+git submodule update
 make
 cd out
 vi ./brother.config
