@@ -470,7 +470,7 @@ exchange_params2(struct data_channel *data_channel)
     }
 
     msg_len = brother_conn_receive(data_channel->conn, data_channel->buf,
-                                  sizeof(data_channel->buf));
+                                  sizeof(data_channel->buf) - 1);
     if (msg_len < 5) {
         LOG_ERR("Failed to receive scan params on data_channel %s\n",
                 data_channel->config->ip);
@@ -495,19 +495,15 @@ exchange_params2(struct data_channel *data_channel)
                 data_channel->config->ip, data_channel->buf[2]);
         return -1;
     }
-
-    if (data_channel->buf[msg_len - 1] != 0x00) {
-        LOG_ERR("%s: received invalid exchange params msg (invalid last byte '%c').\n",
-                data_channel->config->ip, data_channel->buf[msg_len - 1]);
-        return -1;
-    }
+    // Make sure it's \0 terminated.
+    data_channel->buf[msg_len] = 0;
 
     i = 0;
     buf_end = buf = data_channel->buf + 3;
 
     while (i < sizeof(recv_params) / sizeof(recv_params[0])) {
         tmp = strtol((char *) buf, (char **) &buf_end, 10);
-        if (buf_end == buf || *buf_end != ',' ||
+        if (buf_end == buf || (*buf_end != ',' && *buf_end != 0) ||
             ((tmp == LONG_MIN || tmp == LONG_MAX) && errno == ERANGE)) {
             LOG_ERR("%s: received invalid exchange params msg (invalid params).\n",
                     data_channel->config->ip);
@@ -515,7 +511,8 @@ exchange_params2(struct data_channel *data_channel)
         }
 
         recv_params[i++] = tmp;
-        buf = ++buf_end;
+        if (*buf_end) buf_end++;
+        buf = buf_end;
     }
 
     if (*buf != 0x00) {
