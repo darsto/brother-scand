@@ -7,14 +7,19 @@ CFLAGS += -std=gnu11 -pedantic -Wall -Wextra \
 	-Wcast-qual -Wshadow -Wunreachable-code -Wfloat-equal \
 	-Wstrict-aliasing=2 -Wredundant-decls -Wold-style-definition
 LDFLAGS = -pthread
-SOURCES = main.c con_queue.c log.c device_handler.c event_thread.c config.c connection.c \
+SOURCES = con_queue.c log.c device_handler.c event_thread.c config.c connection.c \
 	data_channel.c snmp.c
+EXEC_SOURCES = main.c scanner_cli.c
 SOURCES += ber/ber.c ber/snmp.c
 OBJECTS = $(patsubst %.c, build/%.o, $(SOURCES))
 DEPS := $(OBJECTS:.o=.d)
-EXECUTABLE = build/brother-scand
+EXECUTABLES = build/brother-scand build/brother-scan-cli
 
-all: $(SOURCES) $(EXECUTABLE)
+all: $(SOURCES) $(EXECUTABLES)
+
+test:
+	mkdir -p cmake
+	(cd cmake; cmake .. && make && CTEST_OUTPUT_ON_FAILURE=1 ctest)
 
 -include $(DEPS)
 
@@ -22,8 +27,11 @@ ber/ber.c:
 	git submodule init
 	git submodule update
 
-$(EXECUTABLE): $(OBJECTS)
-	$(CC) $(OBJECTS) -o $@ $(LDFLAGS)
+build/brother-scand: build/main.o $(OBJECTS)
+	$(CC) $^ -o $@ $(LDFLAGS)
+
+build/brother-scan-cli: build/scanner_cli.o $(OBJECTS)
+	$(CC) $^ -o $@ $(LDFLAGS)
 
 build/%.o: %.c
 	@mkdir -p $(@D)
@@ -33,4 +41,4 @@ build/%.o: %.c
 .PHONY: clean
 
 clean:
-	rm -f $(OBJECTS) $(DEPS) $(EXECUTABLE)
+	rm -f $(OBJECTS) $(DEPS) $(EXECUTABLES)

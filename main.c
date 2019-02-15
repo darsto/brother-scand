@@ -30,8 +30,7 @@ print_usage(void)
 static void
 print_version(void)
 {
-    printf("Brother scanner driver. Build " __DATE__ " " __TIME__ "\n"
-           "Copyright 2017 Dariusz Stojaczyk\n");
+  printf("Brother scanner driver. Build " __DATE__ " " __TIME__ "\n");
 }
 
 int
@@ -66,7 +65,7 @@ main(int argc, char *argv[])
         return -1;
     }
 
-    device_handler_init(config_path);
+    device_handler_init();
 
     event_thread_lib_wait();
     return 0;

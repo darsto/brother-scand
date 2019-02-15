@@ -1,0 +1,5 @@
+# Loopback device config for unit tests
+ip 127.0.0.1
+preset default FILE
+network.page.finish.timeout 2
+network.page.init.timeout 2

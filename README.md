@@ -47,12 +47,24 @@ git submodule update
 make
 cd out
 vi ./brother.config
-chmod +x ./scanhook.sh
 ../build/brother-scand
 ```
 
 The driver **should** work for the most of Brother devices. 
-However, it has only been tested on the DCP-J105.
+However, it has only been tested on the DCP-J105 and MFC-J430W.
 
 If you have successfully run this driver with a different model,
-please open a github issue.
+please open a github issue and provide output logs if possible, so that we can
+confirm behavior and add a testcase.
+
+## Running tests
+
+Tests are written in C++ for convenience and use the GoogleTest framework.
+The goal of those tests is to make sure the project keeps working even in the
+absence of actual scanners to test with.
+
+    sudo apt install cmake googletest
+    make test
+
+NOTE: Since tests rely on specific ports and their cleanup isn't always clean,
+    running them repeatly may be flaky.

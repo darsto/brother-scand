@@ -224,6 +224,10 @@ err:
 int
 event_thread_stop(struct event_thread *thread)
 {
+  if (!thread) {
+    LOG_ERR("No thread to stop.\n");
+    return -1;
+  }
     if (thread->state == EVENT_THREAD_STOPPED) {
         LOG_ERR("Thread %p is not running.\n", (void *)thread);
         return -1;
