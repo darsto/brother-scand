@@ -49,6 +49,7 @@ int main(int argc, char *argv[]) {
   struct data_channel data_channel;
   bzero(&data_channel, sizeof(data_channel));
   data_channel.config = TAILQ_FIRST(&g_config.devices);
+  // TODO: choose preset by name and func
   data_channel_set_item(&data_channel,
                         TAILQ_FIRST(&data_channel.config->items));
   data_channel_init(&data_channel);

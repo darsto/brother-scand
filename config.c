@@ -25,34 +25,34 @@ const char *g_scan_func_str[CONFIG_SCAN_MAX_FUNCS] = {
     [SCAN_FUNC_FILE] = "FILE",
 };
 
-static void init_default_device_config(struct item_config *dev_config,
+static void init_default_device_config(struct item_config *item_config,
                                        char *default_hostname) {
   struct scan_param *param;
   int i = 0;
 
-  dev_config->hostname = strdup(default_hostname);
-  dev_config->page_init_timeout = CONFIG_NETWORK_DEFAULT_PAGE_INIT_TIMEOUT;
-  dev_config->page_finish_timeout = CONFIG_NETWORK_DEFAULT_PAGE_FINISH_TIMEOUT;
+  item_config->hostname = strdup(default_hostname);
+  item_config->page_init_timeout = CONFIG_NETWORK_DEFAULT_PAGE_INIT_TIMEOUT;
+  item_config->page_finish_timeout = CONFIG_NETWORK_DEFAULT_PAGE_FINISH_TIMEOUT;
 
-#define ADD_SCAN_PARAM(ID, VAL) \
-    param = &dev_config->scan_params[i++]; \
-    param->id = ID; \
-    strcpy(param->value, VAL);
+#define ADD_SCAN_PARAM(ID, VAL)           \
+  param = &item_config->scan_params[i++]; \
+  param->id = ID;                         \
+  strcpy(param->value, VAL);
 
-    ADD_SCAN_PARAM('A', "");
-    ADD_SCAN_PARAM('B', "50");
-    ADD_SCAN_PARAM('C', "JPEG");
-    ADD_SCAN_PARAM('D', "SIN");
-    ADD_SCAN_PARAM('E', "");
-    ADD_SCAN_PARAM('F', "");
-    ADD_SCAN_PARAM('G', "1");
-    ADD_SCAN_PARAM('J', "");
-    ADD_SCAN_PARAM('L', "128");
-    ADD_SCAN_PARAM('M', "CGRAY");
-    ADD_SCAN_PARAM('N', "50");
-    ADD_SCAN_PARAM('P', "A4");
-    ADD_SCAN_PARAM('R', "300,300");
-    ADD_SCAN_PARAM('T', "JPEG");
+  ADD_SCAN_PARAM('A', "");
+  ADD_SCAN_PARAM('B', "50");
+  ADD_SCAN_PARAM('C', "JPEG");
+  ADD_SCAN_PARAM('D', "SIN");
+  ADD_SCAN_PARAM('E', "");
+  ADD_SCAN_PARAM('F', "");
+  ADD_SCAN_PARAM('G', "1");
+  ADD_SCAN_PARAM('J', "");
+  ADD_SCAN_PARAM('L', "128");
+  ADD_SCAN_PARAM('M', "CGRAY");
+  ADD_SCAN_PARAM('N', "50");
+  ADD_SCAN_PARAM('P', "A4");
+  ADD_SCAN_PARAM('R', "300,300");
+  ADD_SCAN_PARAM('T', "JPEG");
 
 #undef ADD_SCAN_PARAM
 }
@@ -110,8 +110,6 @@ config_init(const char *config_path)
     char var_char;
     unsigned var_uint;
     int rc = -1, param_count = 0, i;
-    char default_hostname[CONFIG_HOSTNAME_LENGTH];
-    strcpy(default_hostname, "brother-open");
 
     TAILQ_INIT(&g_config.devices);
 
@@ -119,7 +117,7 @@ config_init(const char *config_path)
     TAILQ_INIT(&presets);
     struct item_config *default_preset = calloc(1, sizeof(*default_preset));
     struct item_config *preset_config = default_preset;
-    init_default_device_config(default_preset, "default");
+    init_default_device_config(default_preset, "brother-open");
     TAILQ_INSERT_TAIL(&presets, default_preset, tailq);
 
     config = fopen(config_path, "r");
@@ -179,7 +177,7 @@ config_init(const char *config_path)
         dev_config->timeout = var_uint;
       } else if (sscanf((char *)buf, "hostname %15s", var_str) == 1) {
         if (preset_config == NULL) {
-          fprintf(stderr, "Error: password specified without a preset.\n");
+          fprintf(stderr, "Error: hostname specified without a preset.\n");
           goto out;
         }
         char *old_hostname = preset_config->hostname;
@@ -190,7 +188,9 @@ config_init(const char *config_path)
           fprintf(stderr, "Error: password specified without a preset.\n");
           goto out;
         }
+        char *old_password = preset_config->password;
         preset_config->password = strdup(var_str);
+        if (old_password) free(old_password);
       } else if (sscanf((char *)buf, "network.page.init.timeout %u",
                         &var_uint) == 1) {
         if (preset_config == NULL) {
