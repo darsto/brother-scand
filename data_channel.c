@@ -11,8 +11,9 @@
 #include <stdbool.h>
 #include <assert.h>
 #include <memory.h>
-#include <zconf.h>
 #include <errno.h>
+#include <limits.h>
+
 #include "data_channel.h"
 
 #include "connection.h"

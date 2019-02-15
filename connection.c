@@ -7,12 +7,12 @@
 #include <stdlib.h>
 #include <stdatomic.h>
 #include <stdio.h>
-#include <zconf.h>
 #include <stdbool.h>
 #include <memory.h>
 #include <errno.h>
 #include <arpa/inet.h>
 #include <poll.h>
+#include <unistd.h>
 
 #include "connection.h"
 #include "log.h"

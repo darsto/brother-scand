@@ -18,6 +18,10 @@ all: $(SOURCES) $(EXECUTABLE)
 
 -include $(DEPS)
 
+ber/ber.c:
+	git submodule init
+	git submodule update
+
 $(EXECUTABLE): $(OBJECTS)
 	$(CC) $(OBJECTS) -o $@ $(LDFLAGS)
 
