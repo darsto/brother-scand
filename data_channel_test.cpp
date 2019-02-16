@@ -17,7 +17,7 @@ struct DataChannelTest : public ConnectionBaseTest {
   DataChannelTest() : ConnectionBaseTest(DATA_CHANNEL_TARGET_PORT) {}
 
   void init_data_channel() {
-    ASSERT_C_OK(config_init("../unittest.brotherconfig"));
+    ASSERT_C_OK(config_init("../testdata/brother.config"));
     data_channel.config = TAILQ_FIRST(&g_config.devices);
     data_channel_set_item(&data_channel,
                           TAILQ_FIRST(&data_channel.config->items));
