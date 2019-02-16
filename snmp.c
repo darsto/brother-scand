@@ -9,6 +9,8 @@
 #include <stdio.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+
+#include "snmp.h"
 #include "ber/snmp.h"
 #include "log.h"
 #include "config.h"
@@ -91,7 +93,6 @@ int snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
 
   struct snmp_msg_header msg_header = {0};
   struct snmp_varbind varbind[functions_length];
-  va_list args;
   size_t snmp_len;
   uint8_t *out;
   uint32_t i, varbind_num;

@@ -134,7 +134,8 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
   }
 
   return snmp_register_scanner_driver(g_dev_handler.button_conn, enabled, buf,
-                                      sizeof(buf), functions, dev->ip);
+                                      sizeof(buf), functions, num_funcs,
+                                      dev->ip);
 }
 
 struct device *
