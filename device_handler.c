@@ -199,16 +199,20 @@ device_handler_add_device(struct device_config *config)
 
 static char *device_handler_extract_string(const char *buf, char *before,
                                            char *after) {
-  char *user = strstr(buf, before);
-  if (!user) {
+  char *startDelim = strstr(buf, before);
+  if (!startDelim) {
+    LOG_ERR("Could not extract find (%s...%s) in packet:\n", before, after);
+    DUMP_ERR(buf, strlen(buf));
     return NULL;
   }
-  user += 6;
-  char *endDelim = strstr(user, after);
+  startDelim += strlen(before);
+  char *endDelim = strstr(startDelim, after);
   if (!endDelim) {
+    LOG_ERR("Could not extract find (%s...%s) in packet:\n", before, after);
+    DUMP_ERR(buf, strlen(buf));
     return NULL;
   }
-  return strndup(user, endDelim - user);
+  return strndup(startDelim, endDelim - startDelim);
 }
 
 char *device_handler_extract_hostname(const char *buf) {
@@ -217,6 +221,7 @@ char *device_handler_extract_hostname(const char *buf) {
 
 static enum scan_func device_handler_extract_func(const char *buf) {
   char *scan_func_name = device_handler_extract_string(buf, "FUNC=", ";");
+  if (!scan_func_name) return SCAN_FUNC_INVALID;
   enum scan_func scan_func = config_get_scan_func_by_name(scan_func_name);
   free(scan_func_name);
   return scan_func;
@@ -274,6 +279,10 @@ device_handler_loop(void *arg)
     }
 
     char *hostname = device_handler_extract_hostname((char *)(buf + 4));
+    if (!hostname) {
+      return;
+    }
+
     enum scan_func scan_func = device_handler_extract_func((char *)(buf + 4));
     if (scan_func < 0) {
       return;
