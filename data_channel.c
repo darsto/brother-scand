@@ -288,7 +288,9 @@ static int process_chunk_header(struct data_channel *data_channel,
     return -1;
   }
 
-  if (data_channel->page_data.id == 0) {
+  if (data_channel->page_data.id == data_channel->page_data.id + 1) {
+    // The assumption is that pages start with id 1 and increment linearly.
+    // If that's wrong we'll need to update receive scripts too.
     LOG_INFO("%s: now scanning page id %u\n", data_channel->config->ip,
              header->page_id);
     data_channel->page_data.id = header->page_id;

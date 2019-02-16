@@ -117,7 +117,7 @@ config_init(const char *config_path)
     TAILQ_INIT(&presets);
     struct item_config *default_preset = calloc(1, sizeof(*default_preset));
     struct item_config *preset_config = default_preset;
-    init_default_device_config(default_preset, "brother-open");
+    init_default_device_config(default_preset, "default");
     TAILQ_INSERT_TAIL(&presets, default_preset, tailq);
 
     config = fopen(config_path, "r");

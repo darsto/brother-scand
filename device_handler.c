@@ -211,7 +211,7 @@ static char *device_handler_extract_string(const char *buf, char *before,
   return strndup(user, endDelim - user);
 }
 
-static char *device_handler_extract_hostname(const char *buf) {
+char *device_handler_extract_hostname(const char *buf) {
   return device_handler_extract_string(buf, "USER=\"", "\"");
 }
 
