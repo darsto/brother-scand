@@ -23,7 +23,7 @@
 # The following is an example script, that receives RLENGTH encoded monochrome
 # scans, creates a tiff file out of them and then runs tesseract to perform OCR.
 
-set -x
+set -x -e
 
 if [ ! -z "$SCANNER_FILENAME" ]; then
   mv $SCANNER_FILENAME tmp_${SCANNER_IP}_${SCANNER_PAGE}.rle
@@ -47,5 +47,6 @@ mkdir -p scans
 # Run tesseract for OCR. Update the language for better results.
 TESSERACT_LANGUAGE=deu
 tesseract -l $TESSERACT_LANGUAGE tmp_$DEST_FILENAME.tiff scans/$DEST_FILENAME pdf
+rm tmp_$DEST_FILENAME.tiff
 
 notify-send "Received $SCANNER_PAGE page(s) from $SCANNER_IP (${SCANNER_WIDTH}x${SCANNER_HEIGHT} px; ${SCANNER_XDPI}x${SCANNER_YDPI} DPI)"
