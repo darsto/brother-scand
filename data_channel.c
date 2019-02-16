@@ -775,10 +775,6 @@ int data_channel_init(struct data_channel *data_channel) {
         return -1;
     }
 #endif
-
-  memcpy(data_channel->params, data_channel->item->scan_params,
-         sizeof(data_channel->item->scan_params));
-
   return 0;
 }
 
@@ -799,6 +795,8 @@ data_channel_kick_cb(void *arg1, void *arg2)
 void data_channel_set_item(struct data_channel *data_channel,
                            const struct item_config *item) {
   data_channel->item = item;
+  memcpy(data_channel->params, data_channel->item->scan_params,
+         sizeof(data_channel->item->scan_params));
 }
 
 void
