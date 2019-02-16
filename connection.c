@@ -175,7 +175,7 @@ brother_conn_sendto(struct brother_conn *conn, const void *buf, size_t len,
         perror("sendto");
     }
 
-    LOG_DEBUG("sent %zd/%zu bytes to %d", sent_bytes, len,
+    LOG_DEBUG("sent %zd/%zu bytes to :%d\n", sent_bytes, len,
               ntohs(sin_oth.sin_port));
     DUMP_DEBUG(buf, len);
 
@@ -256,7 +256,7 @@ brother_conn_receive(struct brother_conn *conn, void *buf, size_t len)
         memcpy(&conn->sin_oth, &sin_oth_tmp, sizeof(conn->sin_oth));
     }
 
-    LOG_DEBUG("received %zd bytes from %d\n", recv_bytes,
+    LOG_DEBUG("received %zd bytes from :%d\n", recv_bytes,
               ntohs(conn->sin_oth.sin_port));
     DUMP_DEBUG(buf, recv_bytes);
 
