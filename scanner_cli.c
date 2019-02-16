@@ -15,28 +15,35 @@
 #include "log.h"
 #include "data_channel.h"
 
-static void print_usage(void) {
-  printf("Usage: brother [-c path/to/config/file]\n");
+static void print_usage(char **argv) {
+  printf(
+      "Usage: %s [-c path/to/config/file]\n"
+      "   -h print this help\n"
+      "   -d debug output\n",
+      argv[0]);
 }
 
 static void print_version(void) {
-  printf("Brother scanner driver. Build " __DATE__ " " __TIME__ "\n");
+  printf("Brother scanner cli. Build " __DATE__ " " __TIME__ "\n");
 }
 
 int main(int argc, char *argv[]) {
   int option = 0;
   const char *config_path = "brother.config";
 
-  while ((option = getopt(argc, argv, "c:h")) != -1) {
+  while ((option = getopt(argc, argv, "c:dh")) != -1) {
     switch (option) {
       case 'c':
         config_path = optarg;
+        break;
+      case 'd':
+        log_set_level(LEVEL_DEBUG);
         break;
       case 'h':
         print_version();
         exit(EXIT_SUCCESS);
       default:
-        print_usage();
+        print_usage(argv);
         exit(EXIT_FAILURE);
     }
   }

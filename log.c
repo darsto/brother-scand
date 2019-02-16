@@ -15,7 +15,9 @@ static const char *level_names[] = {
     [LEVEL_FATAL] = "FATAL",
 };
 
-static int g_loglevel = LEVEL_DEBUG;
+static int g_loglevel = LEVEL_INFO;
+
+void log_set_level(int level) { g_loglevel = level; }
 
 void log_printf(int level, const char *file, int line, const char *fmt, ...)
 {
@@ -90,7 +92,7 @@ hexdump_line(const char *data, const char *data_start, const char *data_end)
     buf[10 + 5 * 8 + 2] = '|';
     buf[10 + 5 * 8 + 3] = ' ';
 
-    printf("%s\n", buf);
+    fprintf(stderr, "%s\n", buf);
 
     return (int)(i * j);
 }
@@ -106,9 +108,9 @@ hexdump(int level, const void *data, size_t len)
         return;
     }
 
-    printf("{\n");
+    fprintf(stderr, "{\n");
     while (data_ptr < data_end) {
         data_ptr += hexdump_line(data_ptr, data_start, data_end);
     }
-    printf("}\n");
+    fprintf(stderr, "}\n");
 }

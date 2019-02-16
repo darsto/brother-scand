@@ -21,6 +21,7 @@ enum { LEVEL_DEBUG, LEVEL_INFO, LEVEL_WARN, LEVEL_ERR, LEVEL_FATAL };
 #define DUMP_DEBUG(...) hexdump(LEVEL_DEBUG, __VA_ARGS__)
 #define DUMP_ERR(...)   hexdump(LEVEL_ERR,   __VA_ARGS__)
 
+void log_set_level(int level);
 void log_printf(int level, const char *file, int line, const char *fmt, ...);
 void hexdump(int level, const void *data, size_t len);
 

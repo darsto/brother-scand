@@ -54,8 +54,8 @@ The driver **should** work for the most of Brother devices.
 However, it has only been tested on the DCP-J105 and MFC-J430W.
 
 If you have successfully run this driver with a different model,
-please open a github issue and provide output logs if possible, so that we can
-confirm behavior and add a testcase.
+please open a github issue and provide debug output logs if possible, so that
+we can confirm behavior and add a testcase.
 
 ## Running tests
 
