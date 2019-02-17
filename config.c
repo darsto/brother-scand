@@ -168,6 +168,7 @@ config_init(const char *config_path)
         preset_config = calloc(1, sizeof(*preset_config));
         init_item_config(preset_config, existing_preset,
                          existing_preset->hostname);
+        preset_config->scan_func = scan_func;
         TAILQ_INSERT_TAIL(&dev_config->items, preset_config, tailq);
       } else if (sscanf((char *)buf, "network.timeout %u", &var_uint) == 1) {
         if (dev_config == NULL) {

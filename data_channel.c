@@ -191,7 +191,10 @@ static int invoke_callback(struct data_channel *data_channel,
     return -1;
   }
   // parent process
-  wait(NULL);  // wait for child to finish
+  if (filename) {
+    wait(NULL);  // wait for child to finish
+    LOG_DEBUG("Hook finished\n");
+  }
   char **envp_p = envp;
   while (*envp_p != NULL) {
     free(*envp_p);
@@ -542,6 +545,9 @@ exchange_params2(struct data_channel *data_channel)
       return -1;
     }
 
+    // A new scan always starts from 0.
+    data_channel->page_data.id = 0;
+
     SET_CALLBACK(receive_initial_data);
     return 0;
 }
@@ -699,18 +705,16 @@ int data_channel_init_connection(struct data_channel *data_channel) {
     return -1;
   }
 
+  // "-NG 401\r\n": Scanner not ready?
+
   if (buffer[0] != '+') {
     LOG_ERR("Received invalid welcome message on data_channel %s\n",
             data_channel->config->ip);
     return -1;
   }
 
-  // return data_channel_send_scan_params(data_channel);
-
-  // for button handler
   msg_len = brother_conn_send(data_channel->conn, "\x1b\x4b\x0a\x80", 4);
-  // for manual scan
-  // msg_len = brother_conn_send(data_channel->conn, "\x1b\x51\x0a\x80", 4);
+
   if (msg_len < 0) {
     LOG_ERR("Couldn't send welcome message on data_channel %s\n",
             data_channel->config->ip);
@@ -765,17 +769,6 @@ int data_channel_init(struct data_channel *data_channel) {
     event_thread_stop(data_channel->thread);
     return -1;
   }
-
-  // TODO: remove
-#if 0
-    // It's unclear if this is actually needed.
-    if (brother_conn_bind(data_channel->conn, htons(DATA_CHANNEL_LOCAL_PORT)) != 0) {
-        LOG_ERR("Failed to bind a data_channel to port %d.\n",
-                DATA_CHANNEL_LOCAL_PORT);
-        event_thread_stop(data_channel->thread);
-        return -1;
-    }
-#endif
   return 0;
 }
 
