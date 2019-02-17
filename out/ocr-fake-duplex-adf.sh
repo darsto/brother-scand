@@ -24,7 +24,7 @@
 # duplex support. If you scanned a set of >1 pages with the same number in
 # succession, assume it's front and back and create a merged file.
 
-set -x
+set -e -x
 
 if [ -z "$SCANNER_FILENAME" ]; then
   # We need to define the destination filename and remember the previous one.
@@ -39,14 +39,16 @@ fi
 # Fake ADF support.
 if [ -e prevfilename ]; then
   PREV_FILENAME=$(cat prevfilename)
-  if [ -e scans/$PREV_FILENAME ]; then
-    PREV_PAGES=$(pdftk scans/$PREV_FILENAME dump_data | awk '/NumberOfPages/{print $2}')
+  A=scans/$PREV_FILENAME.pdf
+  B=scans/$DEST_FILENAME.pdf
+  if [ -e $A ]; then
+    PREV_PAGES=$(pdftk $A dump_data | awk '/NumberOfPages/{print $2}')
     # Heuristic: if there were multiple pages scanned and the previous doc has the
     # same number of pages: assume it's front and back of an ADF scan and merge them
     if [ $SCANNER_PAGE -eq $PREV_PAGES ] && [ $SCANNER_PAGE -gt 1 ]; then
-      A=scans/$PREV_FILENAME.pdf
-      B=scans/$DEST_FILENAME.pdf
       pdftk A=$A B=$B shuffle A Bend-1 output $A-combined.pdf
+      mv $A-combined.pdf $A
+      rm $B
     fi
   fi
 fi
