@@ -127,10 +127,6 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
 
     functions[num_funcs] = msg[num_funcs];
     num_funcs++;
-    if (num_funcs == CONFIG_SCAN_DEVICE_FUNCS) {
-      LOG_ERR("Too many functions defined for device %s", local_ip);
-      return -1;
-    }
     if (num_funcs == DEVICE_SCAN_MAX_FUNCS_PER_PACKET) {
       rc = snmp_register_scanner_driver(g_dev_handler.button_conn, enabled,
                                         functions, num_funcs, dev->ip);
