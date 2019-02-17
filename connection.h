@@ -20,6 +20,7 @@ struct brother_conn;
 
 struct brother_conn *brother_conn_open(enum brother_connection_type type, unsigned timeout_sec);
 int brother_conn_bind(struct brother_conn *conn, in_port_t local_port);
+void brother_conn_disconnect(struct brother_conn *conn);
 int brother_conn_reconnect(struct brother_conn *conn, in_addr_t dest_addr,
                       in_port_t dest_port);
 int brother_conn_poll(struct brother_conn *conn, unsigned timeout_sec);

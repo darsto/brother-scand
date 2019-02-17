@@ -49,13 +49,6 @@ int data_channel_set_paused(struct data_channel *data_channel) {
   return 0;
 }
 
-static void
-data_channel_pause(struct data_channel *data_channel)
-{
-    LOG_DEBUG("%s: going to sleep.\n", data_channel->config->ip);
-    SET_CALLBACK(data_channel_set_paused);
-}
-
 static struct scan_param *
 get_scan_param_by_index(struct data_channel *data_channel, uint8_t index)
 {
@@ -249,14 +242,16 @@ static int process_page_end_header(struct data_channel *data_channel,
 }
 
 static void process_scan_end_header(struct data_channel *data_channel) {
-  data_channel_pause(data_channel);
+  brother_conn_disconnect(data_channel->conn);
+  SET_CALLBACK(data_channel_set_paused);
+  invoke_callback(data_channel, NULL);
 }
 
 static int process_page_payload(struct data_channel *data_channel) {
   if (brother_conn_fill_buffer(data_channel->conn, 1,
-                               data_channel->item->page_finish_timeout) < 0) {
+                               data_channel->config->timeout) < 0) {
     LOG_ERR("%s: Incomplete data from scanner\n", data_channel->config->ip);
-    data_channel_pause(data_channel);
+    SET_CALLBACK(data_channel_set_paused);
     return -1;
   }
   size_t msg_len = MIN(data_channel->page_data.remaining_chunk_bytes,
@@ -321,7 +316,7 @@ static int process_header(struct data_channel *data_channel) {
                                data_channel->item->page_finish_timeout) < 0) {
     LOG_ERR("%s: Incomplete data from scanner. Didn't receive chunk header",
             data_channel->config->ip);
-    data_channel_pause(data_channel);
+    SET_CALLBACK(data_channel_set_paused);
     return -1;
   }
   uint8_t *buf = brother_conn_peek(data_channel->conn, 1);
@@ -329,8 +324,6 @@ static int process_header(struct data_channel *data_channel) {
   if (buf && *buf == 0x80) {  // page end marker
     brother_conn_read(data_channel->conn, 1);
     process_scan_end_header(data_channel);
-    invoke_callback(data_channel, NULL);
-    data_channel_pause(data_channel);
     return 1;
   }
 
@@ -338,7 +331,7 @@ static int process_header(struct data_channel *data_channel) {
                                data_channel->item->page_finish_timeout) < 0) {
     LOG_ERR("%s: Incomplete data from scanner. Didn't receive chunk header\n",
             data_channel->config->ip);
-    data_channel_pause(data_channel);
+    SET_CALLBACK(data_channel_set_paused);
     return -1;
   }
   buf = brother_conn_read(data_channel->conn, 10);
@@ -379,7 +372,7 @@ static int process_header(struct data_channel *data_channel) {
           0) {
         LOG_ERR("%s: Incomplete data from scanner. Didn't receive chunk size",
                 data_channel->config->ip);
-        data_channel_pause(data_channel);
+        SET_CALLBACK(data_channel_set_paused);
         return -1;
       }
       rc = process_chunk_header(data_channel, &header);
@@ -405,11 +398,19 @@ receive_initial_data(struct data_channel *data_channel)
   int rc;
 
   if (brother_conn_data_available(data_channel->conn) == 0) {
+    int is_first_page = data_channel->page_data.id == 0;
     rc = brother_conn_poll(data_channel->conn,
-                           data_channel->item->page_init_timeout);
+                           is_first_page
+                               ? data_channel->item->page_init_timeout
+                               : data_channel->item->page_finish_timeout);
     if (rc <= 0) {
       /* a failed scan attempt */
-      data_channel_pause(data_channel);
+      LOG_WARN("Waited %ds for page, but didn't receive scan data.\n",
+               data_channel->item->page_init_timeout);
+      if (!is_first_page) {
+        // assume the scan is finished.
+        process_scan_end_header(data_channel);
+      }
       return -1;
     }
   }
@@ -584,7 +585,7 @@ exchange_params1(struct data_channel *data_channel)
     int i, rc;
     uint8_t buffer[1024];
 
-    rc = brother_conn_poll(data_channel->conn, 2);
+    rc = brother_conn_poll(data_channel->conn, data_channel->config->timeout);
     if (rc <= 0) {
         LOG_ERR("%s: couldn't receive initial scan params\n",
                 data_channel->config->ip);
@@ -678,7 +679,7 @@ int data_channel_init_connection(struct data_channel *data_channel) {
     return -1;
   }
 
-  rc = brother_conn_poll(data_channel->conn, 3);
+  rc = brother_conn_poll(data_channel->conn, data_channel->config->timeout);
   if (rc <= 0) {
     LOG_ERR("Couldn't receive welcome message on data_channel %s\n",
             data_channel->config->ip);
@@ -734,7 +735,7 @@ void data_channel_loop(void *arg) {
       data_channel->tempfile = NULL;
     }
 
-    data_channel_pause(data_channel);
+    SET_CALLBACK(data_channel_set_paused);
   }
 }
 

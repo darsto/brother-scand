@@ -105,24 +105,29 @@ brother_conn_bind(struct brother_conn *conn, in_port_t local_port)
     return 0;
 }
 
+void brother_conn_disconnect(struct brother_conn *conn) {
+  if (conn->connected) {
+    close(conn->fd);
+    conn->connected = false;
+    conn->fd = 0;
+  }
+}
+
 int
 brother_conn_reconnect(struct brother_conn *conn, in_addr_t dest_addr,
                   in_port_t dest_port)
 {
     int retries;
+    brother_conn_disconnect(conn);
+    if (!conn->fd) {
+      if (create_socket(conn, (unsigned)conn->timeout.tv_sec) != 0) {
+        return -1;
+      }
 
-    if (conn->connected) {
-        close(conn->fd);
-        conn->connected = false;
-
-        if (create_socket(conn, (unsigned)conn->timeout.tv_sec) != 0) {
-            return -1;
-        }
-
-        if (conn->sin_me.sin_port &&
-            brother_conn_bind(conn, conn->sin_me.sin_port) != 0) {
-            return -1;
-        }
+      if (conn->sin_me.sin_port &&
+          brother_conn_bind(conn, conn->sin_me.sin_port) != 0) {
+        return -1;
+      }
     }
 
     conn->is_stream = true;
