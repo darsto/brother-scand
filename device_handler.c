@@ -22,6 +22,7 @@
 
 #define DEVICE_REGISTER_DURATION_SEC 360
 #define DEVICE_KEEPALIVE_DURATION_SEC 5
+#define DEVICE_SCAN_MAX_FUNCS_PER_PACKET 4
 #define BUTTON_HANDLER_PORT 54925
 
 struct device {
@@ -95,10 +96,9 @@ encode_password(const char *pass, char *buf)
 static int
 register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
 {
-  const char *functions[CONFIG_SCAN_DEVICE_FUNCS] = {0};
-  char msg[CONFIG_SCAN_DEVICE_FUNCS][256];
+  const char *functions[DEVICE_SCAN_MAX_FUNCS_PER_PACKET] = {0};
+  char msg[DEVICE_SCAN_MAX_FUNCS_PER_PACKET][128];
   char pass_buf[9] = {0};
-  uint8_t buf[1024];
   int num_funcs = 0, i, rc;
   struct item_config *item;
 
@@ -126,16 +126,26 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
     }
 
     functions[num_funcs] = msg[num_funcs];
-    ++num_funcs;
+    num_funcs++;
     if (num_funcs == CONFIG_SCAN_DEVICE_FUNCS) {
       LOG_ERR("Too many functions defined for device %s", local_ip);
       return -1;
     }
+    if (num_funcs == DEVICE_SCAN_MAX_FUNCS_PER_PACKET) {
+      rc = snmp_register_scanner_driver(g_dev_handler.button_conn, enabled,
+                                        functions, num_funcs, dev->ip);
+      if (rc < 0) {
+        return rc;
+      }
+      num_funcs = 0;
+    }
   }
-
-  return snmp_register_scanner_driver(g_dev_handler.button_conn, enabled, buf,
-                                      sizeof(buf), functions, num_funcs,
-                                      dev->ip);
+  if (num_funcs > 0) {
+    return snmp_register_scanner_driver(g_dev_handler.button_conn, enabled,
+                                        functions, num_funcs, dev->ip);
+    ;
+  }
+  return 0;
 }
 
 struct device *

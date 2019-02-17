@@ -86,9 +86,10 @@ snmp_get_printer_status(struct brother_conn *conn, uint8_t *buf, size_t buf_len,
 }
 
 int snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
-                                 uint8_t *buf, size_t buf_len,
                                  const char **functions,
                                  size_t functions_length, in_addr_t dest_addr) {
+  size_t buf_len = 512 + functions_length * 128;
+  uint8_t buf[buf_len];
   uint8_t *buf_end = buf + buf_len - 1;
 
   struct snmp_msg_header msg_header = {0};
