@@ -236,7 +236,7 @@ config_init(const char *config_path)
         }
 
         ++param_count;
-      } else if (sscanf((char *)buf, "scan.func %1024s", var_str) == 1) {
+      } else if (sscanf((char *)buf, "scan.func %1024[^\n]", var_str) == 1) {
         if (preset_config == NULL) {
           fprintf(stderr, "Error: scan.param specified without a preset.\n");
           goto out;
