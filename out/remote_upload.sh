@@ -9,6 +9,7 @@
 #   SCANNER_WIDTH
 #   SCANNER_PAGE (starts from 1)
 #   SCANNER_IP
+#   SCANNER_SCANID (to group a set of scanned pages)
 #   SCANNER_HOSTNAME (as selected on the device)
 #   SCANNER_FUNC (as selected on the device)
 #   SCANNER_FILENAME (where the received data was stored), e.g. scan123.jpg
@@ -26,7 +27,7 @@
 # If SCANNER_FILENAME is set, sends a POST request with the files’ contents
 # as binary data. Otherwise (for the final invocation), sends a GET request.
 #
-
+set -x -e
 URL=$1
 
 if [ ! -z "$SCANNER_FILENAME" ]; then
@@ -40,6 +41,7 @@ curl -v $UPLOAD_CMD $URL \
     -H "SCANNER_WIDTH: $SCANNER_WIDTH" \
     -H "SCANNER_PAGE: $SCANNER_PAGE" \
     -H "SCANNER_IP: $SCANNER_IP" \
+    -H "SCANNER_SCANID: $SCANNER_SCANID" \
     -H "SCANNER_HOSTNAME: $SCANNER_HOSTNAME" \
     -H "SCANNER_FUNC: $SCANNER_FUNC" \
     -H 'Expect:'

@@ -18,6 +18,7 @@ struct data_channel {
   int (*process_cb)(struct data_channel *data_channel);
 
   FILE *tempfile;
+  int scan_id;
 
   struct data_channel_page_data {
     int id;

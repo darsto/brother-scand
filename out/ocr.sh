@@ -9,6 +9,7 @@
 #   SCANNER_WIDTH
 #   SCANNER_PAGE (starts from 1)
 #   SCANNER_IP
+#   SCANNER_SCANID (to group a set of scanned pages)
 #   SCANNER_HOSTNAME (as selected on the device)
 #   SCANNER_FUNC (as selected on the device)
 #   SCANNER_FILENAME (where the received data was stored), e.g. scan123.jpg
@@ -26,7 +27,7 @@
 set -x -e
 
 if [ ! -z "$SCANNER_FILENAME" ]; then
-  mv $SCANNER_FILENAME tmp_${SCANNER_IP}_${SCANNER_PAGE}.rle
+  mv $SCANNER_FILENAME tmp_${SCANNER_SCANID}_${SCANNER_PAGE}.rle
   exit 0
 fi
 
@@ -35,7 +36,7 @@ fi
 
 # Convert to TIFF
 python3 ../rle_to_tiff.py $SCANNER_XDPI $SCANNER_YDPI $SCANNER_WIDTH \
-    $(for i in $(seq 1 $SCANNER_PAGE); do echo tmp_${SCANNER_IP}_${SCANNER_PAGE}.rle; done) \
+    $(for i in $(seq 1 $SCANNER_PAGE); do echo tmp_${SCANNER_SCANID}_$i.rle; done) \
     > tmp_$DEST_FILENAME.tiff
 
 # For black & white scans, nothing beats FAX group4 compression.

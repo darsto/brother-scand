@@ -9,6 +9,7 @@
 #   SCANNER_WIDTH
 #   SCANNER_PAGE (starts from 1)
 #   SCANNER_IP
+#   SCANNER_SCANID (unique per scand instance)
 #   SCANNER_HOSTNAME (as selected on the device)
 #   SCANNER_FUNC (as selected on the device)
 #   SCANNER_FILENAME (where the received data was stored), e.g. scan123.jpg

@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <assert.h>
@@ -30,6 +31,9 @@
     LOG_DEBUG("data_channel->process_cb = " #x ";\n"); \
     data_channel->process_cb = x;                      \
   }
+
+// Unique ID (per scand instance) that groups a set of scanned pages.
+static atomic_int scan_id;
 
 struct data_packet_header {
     uint8_t id;
@@ -156,7 +160,7 @@ static int invoke_callback(struct data_channel *data_channel,
   }
   LOG_INFO("Running hook: %s\n", script);
   char *args[] = {"/bin/sh", "-c", script, NULL};
-  char *envp[10];
+  char *envp[11];
 
   int env_idx = 0;
 #define SET_ENVP(attr, value)                                  \
@@ -173,6 +177,7 @@ static int invoke_callback(struct data_channel *data_channel,
   SET_ENVP("SCANNER_WIDTH=%d", data_channel->width);
   SET_ENVP("SCANNER_PAGE=%d", data_channel->page_data.id);
   SET_ENVP("SCANNER_IP=%s", data_channel->config->ip);
+  SET_ENVP("SCANNER_SCANID=%d", data_channel->scan_id);
   SET_ENVP("SCANNER_HOSTNAME=%s", data_channel->item->hostname);
   SET_ENVP("SCANNER_FUNC=%s", scan_func);
   if (filename) {
@@ -547,6 +552,7 @@ exchange_params2(struct data_channel *data_channel)
 
     // A new scan always starts from 0.
     data_channel->page_data.id = 0;
+    data_channel->scan_id = atomic_fetch_add(&scan_id, 1);
 
     SET_CALLBACK(receive_initial_data);
     return 0;
