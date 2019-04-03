@@ -22,6 +22,7 @@
 
 #define DEVICE_REGISTER_DURATION_SEC 360
 #define DEVICE_KEEPALIVE_DURATION_SEC 5
+#define DEVICE_OFFLINE_RETRY_DURATION_SEC 5
 #define DEVICE_SCAN_MAX_FUNCS_PER_PACKET 4
 #define BUTTON_HANDLER_PORT 54925
 
@@ -106,6 +107,9 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
     if (item->password != NULL && strlen(item->password) == 4) {
       encode_password(item->password, pass_buf);
     }
+    if (!item->appnum) {
+      item->appnum = atomic_fetch_add(&g_appnum, 1);
+    }
 
     rc = snprintf(msg[num_funcs], sizeof(msg),
                   "TYPE=BR;"
@@ -118,7 +122,7 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
                   "BRID=%s;"
                   "CC=1;",
                   item->hostname, g_scan_func_str[item->scan_func], local_ip,
-                  BUTTON_HANDLER_PORT, atomic_fetch_add(&g_appnum, 1),
+                  BUTTON_HANDLER_PORT, item->appnum,
                   DEVICE_REGISTER_DURATION_SEC, pass_buf);
 
     if (rc < 0 || rc == 255) {
@@ -245,26 +249,34 @@ device_handler_loop(void *arg)
 
     TAILQ_FOREACH(dev, &g_dev_handler.devices, tailq) {
         time_now = time(NULL);
+        int need_ping = difftime(time_now, dev->next_ping_time) > 0;
+        int need_register = difftime(time_now, dev->next_register_time) > 0;
 
-        if (difftime(time_now, dev->next_ping_time) > 0) {
-            /* only ping once per DEVICE_KEEPALIVE_DURATION_SEC */
-            dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
-            dev->status = snmp_get_printer_status(g_dev_handler.button_conn,
-                                                  buf, sizeof(buf), dev->ip);
-            if (dev->status != 10001) {
-                LOG_WARN("Warn: device at %s is currently unreachable.\n",
-                         dev->config->ip);
+        if (need_ping) {
+          /* only ping once per DEVICE_KEEPALIVE_DURATION_SEC */
+          dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
+          dev->status = snmp_get_printer_status(g_dev_handler.button_conn, buf,
+                                                sizeof(buf), dev->ip);
+          if (dev->status != 10001) {
+            if (need_register) {
+              // If the device is offline try re-establishing the connection
+              // more frequently, so that we can re-register when it comes back
+              dev->next_ping_time =
+                  time_now + DEVICE_OFFLINE_RETRY_DURATION_SEC;
             }
+            LOG_WARN("Warn: device at %s is currently unreachable.\n",
+                     dev->config->ip);
+          }
         }
 
         if (dev->status != 10001) {
             continue;
         }
 
-        if (difftime(time_now, dev->next_register_time) > 0) {
-            /* only register once per DEVICE_REGISTER_DURATION_SEC */
-            dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
-            register_scanner_driver(dev, dev->local_ip, true);
+        if (need_register) {
+          /* only register once per DEVICE_REGISTER_DURATION_SEC */
+          dev->next_register_time = time_now + DEVICE_REGISTER_DURATION_SEC;
+          register_scanner_driver(dev, dev->local_ip, true);
         }
     }
 

@@ -48,6 +48,9 @@ struct item_config {
   // Which script to execute after receiving a page or set of pages.
   char *scan_command;
   TAILQ_ENTRY(item_config) tailq;
+
+  // Registration number for this device. Filled in device_handler.c
+  unsigned appnum;
 };
 
 struct brother_config {
