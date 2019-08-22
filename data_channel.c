@@ -197,8 +197,9 @@ static int invoke_callback(struct data_channel *data_channel,
   }
   // parent process
   if (filename) {
-    wait(NULL);  // wait for child to finish
-    LOG_DEBUG("Hook finished\n");
+    LOG_DEBUG("Waiting for hook to finish: %d\n", rc);
+    waitpid(rc, NULL, 0);  // wait for child to finish
+    LOG_DEBUG("Hook finished: %d\n", rc);
   }
   char **envp_p = envp;
   while (*envp_p != NULL) {

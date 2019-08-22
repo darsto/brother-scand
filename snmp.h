@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <netinet/in.h>
 #include "connection.h"
+#include <stdbool.h>
 
 int snmp_get_printer_status(struct brother_conn *conn,
                             uint8_t *buf, size_t buf_len, in_addr_t dest_addr);

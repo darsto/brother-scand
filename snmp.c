@@ -149,7 +149,10 @@ int snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
 
   snmp_decode_msg(buf, msg_len, &msg_header, &varbind_num, varbind);
   if (msg_header.error_index != 0 && msg_header.error_status != 0) {
-    LOG_ERR("Received invalid register SNMP response\n");
+    LOG_ERR(
+        "Received invalid register SNMP response: error_index=%d, "
+        "error_status=%d\n",
+        msg_header.error_index, msg_header.error_status);
     DUMP_ERR(buf, (size_t)msg_len);
     return -1;
   }
