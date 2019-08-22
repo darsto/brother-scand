@@ -12,8 +12,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#include "connection.h"
-
 struct brother_conn;
 
 int snmp_get_printer_status(struct brother_conn *conn,

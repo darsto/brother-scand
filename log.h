@@ -7,7 +7,6 @@
 #ifndef BROTHER_LOG_H
 #define BROTHER_LOG_H
 
-#include <stdarg.h>
 #include <stdio.h>
 
 enum { LEVEL_DEBUG, LEVEL_INFO, LEVEL_WARN, LEVEL_ERR, LEVEL_FATAL };

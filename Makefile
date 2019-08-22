@@ -27,7 +27,7 @@ iwyu: $(SOURCES)
 	(cd cmake; CC=clang CXX=clang++ cmake .. && make iwyu) 2>&1 | tee iwyu
 
 fix_include: iwyu
-	$(FIX_INCLUDE) < iwyu
+	$(FIX_INCLUDE) --nosafe_headers < iwyu
 
 -include $(DEPS)
 
