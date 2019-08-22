@@ -43,3 +43,16 @@ include_directories(${GTEST_INCLUDE_DIRS})
 add_executable(tests device_handler_test.cpp connection_test.cpp data_channel_test.cpp connection_base_test.h)
 target_link_libraries(tests button_driver gtest gtest_main)
 add_test(AllTests tests)
+
+# Generate clang compilation database
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+find_package(PythonInterp)
+find_program(iwyu_tool_path NAMES iwyu_tool)
+if (iwyu_tool_path AND PYTHONINTERP_FOUND)
+  add_custom_target(iwyu
+    COMMAND "${PYTHON_EXECUTABLE}" "${iwyu_tool_path}" -p "${CMAKE_BINARY_DIR}" -- --mapping_file ../check_mk.imp
+    COMMENT "Running include-what-you-use tool"
+    VERBATIM
+  )
+endif()

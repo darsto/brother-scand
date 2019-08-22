@@ -14,12 +14,20 @@ SOURCES += ber/ber.c ber/snmp.c
 OBJECTS = $(patsubst %.c, build/%.o, $(SOURCES))
 DEPS := $(OBJECTS:.o=.d)
 EXECUTABLES = build/brother-scand build/brother-scan-cli
+FIX_INCLUDE = fix_include
 
 all: $(SOURCES) $(EXECUTABLES)
 
 test:
 	mkdir -p cmake
-	(cd cmake; cmake .. && make && CTEST_OUTPUT_ON_FAILURE=1 ctest)
+	(cd cmake; CC=clang CXX=clang++ cmake .. && make && CTEST_OUTPUT_ON_FAILURE=1 ctest)
+
+iwyu: $(SOURCES)
+	mkdir -p cmake
+	(cd cmake; CC=clang CXX=clang++ cmake .. && make iwyu) 2>&1 | tee iwyu
+
+fix_include: iwyu
+	$(FIX_INCLUDE) < iwyu
 
 -include $(DEPS)
 
@@ -41,4 +49,4 @@ build/%.o: %.c
 .PHONY: clean test
 
 clean:
-	rm -f $(OBJECTS) $(DEPS) $(EXECUTABLES)
+	rm -f $(OBJECTS) $(DEPS) $(EXECUTABLES) iwyu
