@@ -4,15 +4,16 @@
  * that can be found in the LICENSE file.
  */
 
-#include <unistd.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <stdlib.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include "event_thread.h"
+#include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include "con_queue.h"
+#include "event_thread.h"
 #include "log.h"
 
 #define MAX_EVENT_THREADS 32

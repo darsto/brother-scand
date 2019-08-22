@@ -5,6 +5,8 @@
  */
 
 #include <ctype.h>
+#include <stdarg.h>
+
 #include "log.h"
 
 static const char *level_names[] = {

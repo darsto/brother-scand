@@ -1,7 +1,15 @@
-#include <thread>
+#include <gtest/gtest.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <memory>
 #include <string>
-#include "gtest/gtest.h"
+#include <thread>
+
 #include "connection_base_test.h"
+#include "gtest/gtest.h"
+extern "C" {
+#include "connection.h"
+}
 
 struct ConnectionTest : public ConnectionBaseTest {};
 

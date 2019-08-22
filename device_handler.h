@@ -9,6 +9,8 @@
 
 #include "config.h"
 
+struct device_config;
+
 void device_handler_init(void);
 struct device *device_handler_add_device(struct device_config *config);
 

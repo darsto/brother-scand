@@ -1,7 +1,10 @@
+#include <gtest/gtest.h>
+
 #include "gtest/gtest.h"
 
 extern "C" {
 #include "device_handler.h"
+
 char *device_handler_extract_hostname(const char *buf);
 }
 

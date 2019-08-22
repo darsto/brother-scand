@@ -5,6 +5,7 @@
  */
 
 #include <netinet/in.h>
+#include <stddef.h>
 
 #ifndef BROTHER_CONNECTION_H
 #define BROTHER_CONNECTION_H

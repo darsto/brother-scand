@@ -4,22 +4,22 @@
  * that can be found in the LICENSE file.
  */
 
-#include <stdio.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <stdatomic.h>
-#include <stdlib.h>
-#include <stdbool.h>
 #include <assert.h>
-#include <memory.h>
 #include <errno.h>
 #include <limits.h>
+#include <netinet/in.h>
+#include <stdatomic.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/param.h>
 #include <sys/wait.h>
-
-#include "data_channel.h"
+#include <unistd.h>
 
 #include "connection.h"
+#include "data_channel.h"
 #include "event_thread.h"
 #include "log.h"
 

@@ -4,17 +4,18 @@
  * that can be found in the LICENSE file.
  */
 
-#include <stdint.h>
-#include <memory.h>
-#include <stdio.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
-#include "snmp.h"
 #include "ber/snmp.h"
-#include "log.h"
-#include "config.h"
 #include "connection.h"
+#include "log.h"
+#include "snmp.h"
+
+struct brother_conn;
 
 #define SNMP_PORT 161
 

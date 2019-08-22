@@ -4,16 +4,15 @@
  * that can be found in the LICENSE file.
  */
 
+#include <getopt.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
-#include <getopt.h>
-#include <string.h>
+#include <strings.h>
+#include <sys/queue.h>
 
-#include "device_handler.h"
-#include "event_thread.h"
-#include "log.h"
+#include "config.h"
 #include "data_channel.h"
+#include "log.h"
 
 static void print_usage(char **argv) {
   printf(

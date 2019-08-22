@@ -4,12 +4,12 @@
  * that can be found in the LICENSE file.
  */
 
+#include <getopt.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <signal.h>
-#include <getopt.h>
-#include <string.h>
 
+#include "config.h"
 #include "device_handler.h"
 #include "event_thread.h"
 #include "log.h"

@@ -4,14 +4,15 @@
  * that can be found in the LICENSE file.
  */
 
-#include <stdlib.h>
-#include <stdatomic.h>
-#include <stdio.h>
-#include <stdbool.h>
-#include <memory.h>
-#include <errno.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include <poll.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #include "connection.h"

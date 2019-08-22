@@ -4,21 +4,24 @@
  * that can be found in the LICENSE file.
  */
 
-#include <stdio.h>
 #include <arpa/inet.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <time.h>
-#include <memory.h>
+#include <netinet/in.h>
 #include <stdatomic.h>
-#include "device_handler.h"
-#include "event_thread.h"
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/queue.h>
+#include <time.h>
+
 #include "config.h"
 #include "connection.h"
 #include "data_channel.h"
-#include "snmp.h"
+#include "device_handler.h"
+#include "event_thread.h"
 #include "log.h"
+#include "snmp.h"
 
 #define DEVICE_REGISTER_DURATION_SEC 360
 #define DEVICE_KEEPALIVE_DURATION_SEC 5

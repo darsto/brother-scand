@@ -4,14 +4,11 @@
  * that can be found in the LICENSE file.
  */
 
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <unistd.h>
+
 #include "config.h"
-#include "log.h"
 
 struct brother_config g_config;
 
