@@ -38,7 +38,7 @@ build/%.o: %.c
 	$(CC) -c -MM -MF $(patsubst %.o,%.d,$@) $<
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-.PHONY: clean
+.PHONY: clean test
 
 clean:
 	rm -f $(OBJECTS) $(DEPS) $(EXECUTABLES)
