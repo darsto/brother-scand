@@ -212,11 +212,9 @@ static int invoke_callback(struct data_channel *data_channel,
 static int process_page_end_header(struct data_channel *data_channel,
                                    struct data_packet_header *header) {
   FILE *destfile;
-  struct scan_param *param;
   char filename[64];
   char buf[2048];
   size_t size;
-  int i, rc;
 
   if (header->page_id != data_channel->page_data.id) {
     LOG_ERR("%s: packet page_id mismatch (got %u, expected %u)\n",
@@ -318,7 +316,6 @@ static int process_chunk_header(struct data_channel *data_channel,
 
 static int process_header(struct data_channel *data_channel) {
   struct data_packet_header header;
-  uint32_t payload_len;
   int rc;
 
   if (brother_conn_fill_buffer(data_channel->conn, 1,
@@ -440,7 +437,7 @@ exchange_params2(struct data_channel *data_channel)
     uint8_t buf[1024], *buf_end;
     long recv_params[7];
     int msg_len, rc;
-    size_t i, len;
+    size_t i;
     long tmp;
 
     rc = brother_conn_poll(data_channel->conn, 3);
@@ -522,7 +519,7 @@ exchange_params2(struct data_channel *data_channel)
           param->value, (char *)(buf));
 
       strncpy(param->value, (const char *)buf, sizeof(param->value));
-      param->value[sizeof(param->value)] = 0;
+      param->value[sizeof(param->value) - 1] = 0;
     }
 
     param = get_scan_param_by_id(data_channel, 'A');

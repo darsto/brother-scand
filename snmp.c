@@ -42,7 +42,7 @@ snmp_get_printer_status(struct brother_conn *conn, uint8_t *buf, size_t buf_len,
 {
     uint8_t *buf_end = buf + buf_len - 1;
     struct snmp_msg_header msg_header = {0};
-    struct snmp_varbind varbind = {0};
+    struct snmp_varbind varbind = {{0}};
     size_t snmp_len;
     uint8_t *out;
     int msg_len, rc = -1;

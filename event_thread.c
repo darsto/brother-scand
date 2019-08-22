@@ -144,7 +144,6 @@ event_thread_loop(void *arg)
 {
     struct event_thread *thread = arg;
     struct event *event;
-    sigset_t sigset;
 
     sem_init(&thread->sem, 0, 0);
 
@@ -182,7 +181,7 @@ event_thread_create(const char *name, void (*update_cb)(void *),
     thread_id = atomic_fetch_add(&g_thread_cnt, 1);
     if (thread_id >= MAX_EVENT_THREADS) {
         LOG_FATAL("Reached the thread limit (%d).\n", MAX_EVENT_THREADS);
-        goto name_err;
+        goto err;
     }
 
     thread = &g_threads[thread_id];

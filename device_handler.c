@@ -100,7 +100,7 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
   const char *functions[DEVICE_SCAN_MAX_FUNCS_PER_PACKET] = {0};
   char msg[DEVICE_SCAN_MAX_FUNCS_PER_PACKET][128];
   char pass_buf[9] = {0};
-  int num_funcs = 0, i, rc;
+  int num_funcs = 0, rc;
   struct item_config *item;
 
   TAILQ_FOREACH(item, &dev->config->items, tailq) {
@@ -154,7 +154,7 @@ device_handler_add_device(struct device_config *config)
     struct device *dev;
     struct brother_conn *conn;
     uint8_t buf[1024];
-    int status, rc, i;
+    int status, rc;
     char local_ip[16];
 
     conn = brother_conn_open(BROTHER_CONNECTION_TYPE_UDP,
