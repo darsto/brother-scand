@@ -542,7 +542,7 @@ exchange_params2(struct data_channel *data_channel)
     *buf_p++ = 0x80;  // end of message
 
     msg_len = brother_conn_send(data_channel->conn, buf, buf_p - buf);
-    if (msg_len < 0 || (unsigned)msg_len != buf_p - buf) {
+    if (msg_len < 0 || msg_len != buf_p - buf) {
       LOG_ERR("Couldn't send scan params on data_channel %s\n",
               data_channel->config->ip);
       return -1;

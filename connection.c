@@ -296,7 +296,7 @@ void *brother_conn_peek(struct brother_conn *conn, size_t len) {
     return NULL;
   }
   if (BROTHER_CONN_READ_BUFSIZE < len) {
-    fprintf(stderr, "Can't read more than %ld bytes at once.", len);
+    fprintf(stderr, "Can't read more than %zd bytes at once.", len);
     return NULL;
   }
   if (BROTHER_CONN_READ_BUFSIZE - conn->buf_position < len) {
