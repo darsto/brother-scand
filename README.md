@@ -38,16 +38,13 @@ image data within the same (original) connection. But only on Windows... Well, n
  * Minimal resource usage when idle
  * Configurable hostname :)
 
-# Installation
+## Installation
 ```
 git clone https://github.com/darsto/brother-scanner-driver.git
 cd brother-scanner-driver
 git submodule init
 git submodule update
-make
-cd out
-vi ./brother.config
-../build/brother-scand
+make install
 ```
 
 The driver **should** work for the most of Brother devices. 
@@ -56,6 +53,14 @@ However, it has only been tested on the DCP-J105 and MFC-J430W.
 If you have successfully run this driver with a different model,
 please open a github issue and provide debug output logs if possible, so that
 we can confirm behavior and add a testcase.
+
+## Troubleshooting
+
+* Use `build/brother-scan-cli -c your.config` to test your configuration
+  without having to run the service.
+* Add `-d` to your commandline (both for `build/brother-scan-cli` or in the
+  `/etc/brother-scand/scanner.config` file) to collect debug output.
+* Logs of the system service should be located in `/var/log/brother-scand.log`
 
 ## Running tests
 
