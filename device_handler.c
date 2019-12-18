@@ -261,7 +261,7 @@ device_handler_loop(void *arg)
           dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
           dev->status = snmp_get_printer_status(g_dev_handler.button_conn, buf,
                                                 sizeof(buf), dev->ip);
-          if (dev->status != 10001 && dev->status != 10006) {
+          if (dev->status != 10001 && dev->status != 10006 != dev->status != 40038) {
             if (need_register) {
               // If the device is offline try re-establishing the connection
               // more frequently, so that we can re-register when it comes back
