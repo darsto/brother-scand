@@ -55,8 +55,8 @@ install: all
 	adduser --system --no-create-home $(USER)
 	cp $(EXECUTABLES) $(BINDIR)/
 	mkdir -p $(ETCDIR)
-	cp out/brother.config $(ETCDIR)/scanner.conf
-	cp out/*.sh $(ETCDIR)/
+	[ -e $(ETCDIR)/scanner.conf ] || cp out/brother.config $(ETCDIR)/scanner.conf
+	for file in out/*.sh; do [ -e $(ETCDIR)/$$file ] || cp $$file $(ETCDIR)/; done
 	chown -R $(USER) $(ETCDIR)
 	cp brother-scand.service $(SYSTEMDPATH)
 	cp syslog.conf $(SYSLOGPATH)
