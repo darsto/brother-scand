@@ -13,6 +13,7 @@
 #include <memory.h>
 #include <zconf.h>
 #include <errno.h>
+#include <limits.h>
 #include "data_channel.h"
 
 #include "connection.h"
@@ -538,7 +539,7 @@ exchange_params2(struct data_channel *data_channel)
 
         strncpy(param->value, (const char *) data_channel->buf,
                 sizeof(param->value));
-        param->value[sizeof(param->value)] = 0;
+        param->value[sizeof(param->value) - 1] = 0; // the last byte of a 16-char buffer is (size - 1) = 15
     }
 
     param = get_scan_param_by_id(data_channel, 'A');

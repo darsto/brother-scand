@@ -40,12 +40,12 @@ image data within the same (original) connection. But only on Windows... Well, n
 
 # Installation
 ```
-git clone https://github.com/darsto/brother-scanner-driver.git
+git clone --recurse-submodules https://github.com/darsto/brother-scanner-driver.git
 cd brother-scanner-driver
 make
 cd out
 vi ./brother.config
-chmod +x ./scanhook.sh
+chmod +x ./scanhook.sh      # if it is not already
 ../build/brother-scand
 ```
 
