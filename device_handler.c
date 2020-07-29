@@ -22,7 +22,8 @@
 
 #define DEVICE_REGISTER_DURATION_SEC 360
 #define DEVICE_KEEPALIVE_DURATION_SEC 5
-#define BUTTON_HANDLER_PORT 54925
+/* global overwriteable tcp port number */
+uint16_t button_handler_port = 54925;
 
 struct device {
     in_addr_t ip;
@@ -122,7 +123,7 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
                       "CC=1;",
                       g_config.hostname,
                       g_scan_func_str[i],
-                      local_ip, BUTTON_HANDLER_PORT,
+                      local_ip, button_handler_port,
                       atomic_fetch_add(&g_appnum, 1),
                       DEVICE_REGISTER_DURATION_SEC,
                       pass_buf);
@@ -299,8 +300,8 @@ device_handler_init(const char *config_path)
         return;
     }
 
-    if (brother_conn_bind(g_dev_handler.button_conn, htons(BUTTON_HANDLER_PORT)) != 0) {
-        LOG_FATAL("Could not bind to the button handler port %d.\n", BUTTON_HANDLER_PORT);
+    if (brother_conn_bind(g_dev_handler.button_conn, htons(button_handler_port)) != 0) {
+        LOG_FATAL("Could not bind to the button handler port tcp/%d.\n", button_handler_port);
         brother_conn_close(g_dev_handler.button_conn);
         return;
     }

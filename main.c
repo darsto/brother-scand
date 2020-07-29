@@ -24,7 +24,7 @@ sig_handler(int signo)
 static void
 print_usage(void)
 {
-    printf("Usage: brother [-c path/to/config/file]\n");
+    printf("Usage: brother [-c path/to/config/file] [-p port (%d)]\n", button_handler_port);
 }
 
 static void
@@ -40,11 +40,20 @@ main(int argc, char *argv[])
     int option = 0;
     const char *config_path = "brother.config";
 
-    while ((option = getopt(argc, argv, "c:h")) != -1) {
+    while ((option = getopt(argc, argv, "c:p:h")) != -1) {
         switch (option) {
         case 'c':
             config_path = optarg;
             break;
+        case 'p':  // set tcp port number for button handler
+        {
+            int16_t c = atoi(optarg);
+            if (c > 0)
+                button_handler_port = c;
+            else
+                fprintf(stderr, "cannot set port to parsed port number %d from \"%s\"\n", c, optarg);
+            break;
+        }
         case 'h':
             print_version();
             exit(EXIT_SUCCESS);
