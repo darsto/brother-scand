@@ -5,7 +5,9 @@ CFLAGS += -std=gnu11 -pedantic -Wall -Wextra \
 	-Wno-unused-label -Wno-unused-function -Wcast-align -Wpointer-arith -Wbad-function-cast \
 	-Wstrict-overflow=5 -Wstrict-prototypes -Winline -Wundef -Wnested-externs \
 	-Wcast-qual -Wshadow -Wunreachable-code -Wfloat-equal \
-	-Wstrict-aliasing=2 -Wredundant-decls -Wold-style-definition
+	-Wstrict-aliasing=2 -Wredundant-decls -Wold-style-definition \
+	-Wno-format-nonliteral -Wno-deprecated-declarations -Wno-gnu-empty-initializer \
+
 LDFLAGS = -pthread
 SOURCES = main.c con_queue.c log.c device_handler.c event_thread.c config.c connection.c \
 	data_channel.c snmp.c

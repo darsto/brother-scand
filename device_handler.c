@@ -143,7 +143,7 @@ register_scanner_driver(struct device *dev, char local_ip[16], bool enabled)
 struct device *
 device_handler_add_device(struct device_config *config)
 {
-    struct device *dev;
+    struct device *dev = NULL;
     struct brother_conn *conn;
     int status, rc, i;
     char local_ip[16];

@@ -182,7 +182,7 @@ event_thread_create(const char *name, void (*update_cb)(void *),
     thread_id = atomic_fetch_add(&g_thread_cnt, 1);
     if (thread_id >= MAX_EVENT_THREADS) {
         LOG_FATAL("Reached the thread limit (%d).\n", MAX_EVENT_THREADS);
-        goto name_err;
+        goto err;  // cannot goto name_err because it frees thread->name, but thread is not yet initialized
     }
 
     thread = &g_threads[thread_id];
