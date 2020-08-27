@@ -1,6 +1,8 @@
 # Brother scanner network driver
 
-![Status](https://img.shields.io/badge/status-stable-green.svg)
+This repository is no longer maintained. Please check out the @rumpeltux fork at https://github.com/rumpeltux/brother-scand
+
+![Status](https://img.shields.io/badge/status-discontinued-red.svg)
 [![License](https://img.shields.io/github/license/darsto/brother-scanner-driver.svg)](LICENSE.md)
 
 Functional userspace driver for Brother scanners.
