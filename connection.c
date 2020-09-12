@@ -4,15 +4,16 @@
  * that can be found in the LICENSE file.
  */
 
-#include <stdlib.h>
-#include <stdatomic.h>
-#include <stdio.h>
-#include <zconf.h>
-#include <stdbool.h>
-#include <memory.h>
-#include <errno.h>
 #include <arpa/inet.h>
+#include <errno.h>
 #include <poll.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+#include <unistd.h>
 
 #include "connection.h"
 #include "log.h"
@@ -25,6 +26,9 @@ struct brother_conn {
     struct sockaddr_in sin_me;
     struct sockaddr_in sin_oth;
     struct timeval timeout;
+    char *buf;  // buffered output
+    size_t buf_position;
+    size_t buf_filled;
 };
 
 static int
@@ -37,6 +41,10 @@ create_socket(struct brother_conn *conn, unsigned timeout_sec)
     } else {
         conn->fd = socket(AF_INET, SOCK_STREAM, IPPROTO_IP);
         conn->is_stream = true;
+        if (conn->buf) free(conn->buf);
+        conn->buf = calloc(1, BROTHER_CONN_READ_BUFSIZE);
+        conn->buf_position = 0;
+        conn->buf_filled = 0;
     }
 
     if (conn->fd == -1) {
@@ -98,24 +106,29 @@ brother_conn_bind(struct brother_conn *conn, in_port_t local_port)
     return 0;
 }
 
+void brother_conn_disconnect(struct brother_conn *conn) {
+  if (conn->connected) {
+    close(conn->fd);
+    conn->connected = false;
+    conn->fd = 0;
+  }
+}
+
 int
 brother_conn_reconnect(struct brother_conn *conn, in_addr_t dest_addr,
                   in_port_t dest_port)
 {
     int retries;
+    brother_conn_disconnect(conn);
+    if (!conn->fd) {
+      if (create_socket(conn, (unsigned)conn->timeout.tv_sec) != 0) {
+        return -1;
+      }
 
-    if (conn->connected) {
-        close(conn->fd);
-        conn->connected = false;
-
-        if (create_socket(conn, (unsigned)conn->timeout.tv_sec) != 0) {
-            return -1;
-        }
-
-        if (conn->sin_me.sin_port &&
-            brother_conn_bind(conn, conn->sin_me.sin_port) != 0) {
-            return -1;
-        }
+      if (conn->sin_me.sin_port &&
+          brother_conn_bind(conn, conn->sin_me.sin_port) != 0) {
+        return -1;
+      }
     }
 
     conn->is_stream = true;
@@ -123,17 +136,19 @@ brother_conn_reconnect(struct brother_conn *conn, in_addr_t dest_addr,
     conn->sin_oth.sin_family = AF_INET;
     conn->sin_oth.sin_port = dest_port;
 
-    for (retries = 0; retries < 3; ++retries) {
-        usleep(1000 * 25);
-        if (connect(conn->fd, (struct sockaddr *)&conn->sin_oth,
-                    sizeof(conn->sin_oth)) == 0) {
-            break;
-        }
+    const int max_retries = 3;
+    for (retries = 0; retries < max_retries; ++retries) {
+      usleep(1000 * 25);
+      if (connect(conn->fd, (struct sockaddr *)&conn->sin_oth,
+                  sizeof(conn->sin_oth)) == 0) {
+        break;
+      }
+      perror("connect");
     }
 
-    if (retries == 3) {
-        perror("connect");
-        return -1;
+    if (retries == max_retries) {
+      perror("connect");
+      return -1;
     }
 
     conn->connected = true;
@@ -166,7 +181,7 @@ brother_conn_sendto(struct brother_conn *conn, const void *buf, size_t len,
         perror("sendto");
     }
 
-    LOG_DEBUG("sent %zd/%zu bytes to %d", sent_bytes, len,
+    LOG_DEBUG("sent %zd/%zu bytes to :%d\n", sent_bytes, len,
               ntohs(sin_oth.sin_port));
     DUMP_DEBUG(buf, len);
 
@@ -176,7 +191,7 @@ brother_conn_sendto(struct brother_conn *conn, const void *buf, size_t len,
 int
 brother_conn_poll(struct brother_conn *conn, unsigned timeout_sec)
 {
-    struct pollfd pfd = {};
+    struct pollfd pfd;
     int rc;
 
     pfd.fd = conn->fd;
@@ -247,11 +262,67 @@ brother_conn_receive(struct brother_conn *conn, void *buf, size_t len)
         memcpy(&conn->sin_oth, &sin_oth_tmp, sizeof(conn->sin_oth));
     }
 
-    LOG_DEBUG("received %zd bytes from %d", recv_bytes,
+    LOG_DEBUG("received %zd bytes from :%d\n", recv_bytes,
               ntohs(conn->sin_oth.sin_port));
     DUMP_DEBUG(buf, recv_bytes);
 
     return (int) recv_bytes;
+}
+
+size_t brother_conn_data_available(struct brother_conn *conn) {
+  return conn->buf_filled - conn->buf_position;
+}
+
+int brother_conn_fill_buffer(struct brother_conn *conn, size_t size,
+                             int timeout_seconds) {
+  if (brother_conn_data_available(conn) >= size) {
+    return 0;
+  }
+  int rc = brother_conn_poll(conn, timeout_seconds);
+  if (rc < 0) {
+    return -1;
+  }
+  if (brother_conn_peek(conn, size - brother_conn_data_available(conn)) ==
+      NULL) {
+    return -1;
+  }
+  return 0;
+}
+
+void *brother_conn_peek(struct brother_conn *conn, size_t len) {
+  int rc;
+  if (conn->type == BROTHER_CONNECTION_TYPE_UDP) {
+    fprintf(stderr, "Buffered reading is only available to TCP sockets");
+    return NULL;
+  }
+  if (BROTHER_CONN_READ_BUFSIZE < len) {
+    fprintf(stderr, "Can't read more than %zd bytes at once.", len);
+    return NULL;
+  }
+  if (BROTHER_CONN_READ_BUFSIZE - conn->buf_position < len) {
+    memcpy(conn->buf, conn->buf + conn->buf_position,
+           brother_conn_data_available(conn));
+    conn->buf_filled -= conn->buf_position;
+    conn->buf_position = 0;
+  }
+  size_t available_chars = conn->buf_filled - conn->buf_position;
+  if (available_chars < len) {
+    rc = brother_conn_receive(conn, conn->buf + conn->buf_filled,
+                              BROTHER_CONN_READ_BUFSIZE - conn->buf_filled);
+    if (rc < 0) {
+      return NULL;
+    }
+    conn->buf_filled += rc;
+  }
+  return conn->buf + conn->buf_position;
+}
+
+void *brother_conn_read(struct brother_conn *conn, size_t len) {
+  void *result = brother_conn_peek(conn, len);
+  if (result != NULL) {
+    conn->buf_position += len;
+  }
+  return result;
 }
 
 int
@@ -283,5 +354,6 @@ void
 brother_conn_close(struct brother_conn *conn)
 {
     close(conn->fd);
+    if (conn->buf) free(conn->buf);
     free(conn);
 }

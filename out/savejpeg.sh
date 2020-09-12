@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 ################################################################################
 #
 # The following environment variables will be set:
@@ -21,11 +21,8 @@
 #
 ################################################################################
 
-# This is just an example script. It doesn't actually save any data.
+# Saves the currently received page to a JPEG file.
 
 if [ ! -z "$SCANNER_FILENAME" ]; then
-  "Received page $SCANNER_PAGE page(s) from $SCANNER_IP: $SCANNER_FILENAME"
-  exit 0
+  mv $SCANNER_FILENAME $(date "+%Y-%m-%d_%H%M%S").jpg
 fi
-
-notify-send "Received $SCANNER_PAGE page(s) from $SCANNER_IP (${SCANNER_WIDTH}x${SCANNER_HEIGHT} px; ${SCANNER_XDPI}x${SCANNER_YDPI} DPI)"

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 ################################################################################
 #
 # The following environment variables will be set:
@@ -20,12 +20,32 @@
 # SCANNER_PAGE and SCANNER_FILENAME).
 #
 ################################################################################
-
-# This is just an example script. It doesn't actually save any data.
+#
+# Do the heavy lifting of scan processing remotely.
+# Invokes a remote script and passes the environment params as HTTP headers.
+#
+# If SCANNER_FILENAME is set, sends a POST request with the files’ contents
+# as binary data. Otherwise (for the final invocation), sends a GET request.
+#
+set -x -e
+URL=$1
 
 if [ ! -z "$SCANNER_FILENAME" ]; then
-  "Received page $SCANNER_PAGE page(s) from $SCANNER_IP: $SCANNER_FILENAME"
-  exit 0
+  UPLOAD_CMD="--data-binary @$SCANNER_FILENAME"
 fi
 
-notify-send "Received $SCANNER_PAGE page(s) from $SCANNER_IP (${SCANNER_WIDTH}x${SCANNER_HEIGHT} px; ${SCANNER_XDPI}x${SCANNER_YDPI} DPI)"
+curl -v $UPLOAD_CMD $URL \
+    -H "SCANNER_XDPI: $SCANNER_XDPI" \
+    -H "SCANNER_YDPI: $SCANNER_YDPI" \
+    -H "SCANNER_HEIGHT: $SCANNER_HEIGHT" \
+    -H "SCANNER_WIDTH: $SCANNER_WIDTH" \
+    -H "SCANNER_PAGE: $SCANNER_PAGE" \
+    -H "SCANNER_IP: $SCANNER_IP" \
+    -H "SCANNER_SCANID: $SCANNER_SCANID" \
+    -H "SCANNER_HOSTNAME: $SCANNER_HOSTNAME" \
+    -H "SCANNER_FUNC: $SCANNER_FUNC" \
+    -H 'Expect:'
+
+if [ ! -z "$SCANNER_FILENAME" ]; then
+  rm $SCANNER_FILENAME
+fi

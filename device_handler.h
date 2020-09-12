@@ -7,9 +7,9 @@
 #ifndef BROTHER_DEVICE_HANDLER_H
 #define BROTHER_DEVICE_HANDLER_H
 
-#include "config.h"
+struct device_config;
 
-void device_handler_init(const char *config_path);
+void device_handler_init(void);
 struct device *device_handler_add_device(struct device_config *config);
 
 #endif //BROTHER_DEVICE_HANDLER_H

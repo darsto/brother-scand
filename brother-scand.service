@@ -1,0 +1,14 @@
+[Unit]
+Description=Brother Scanner Driver Service
+
+[Service]
+Type=simple
+User=brother-scand
+WorkingDirectory=/etc/brother-scand
+ExecStart=/usr/bin/brother-scand -c scanner.conf
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=brother-scand
+
+[Install]
+WantedBy=multi-user.target

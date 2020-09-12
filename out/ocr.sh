@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/bin/sh
 ################################################################################
 #
 # The following environment variables will be set:
@@ -21,11 +21,33 @@
 #
 ################################################################################
 
-# This is just an example script. It doesn't actually save any data.
+# The following is an example script, that receives RLENGTH encoded monochrome
+# scans, creates a tiff file out of them and then runs tesseract to perform OCR.
+
+set -x -e
 
 if [ ! -z "$SCANNER_FILENAME" ]; then
-  "Received page $SCANNER_PAGE page(s) from $SCANNER_IP: $SCANNER_FILENAME"
+  mv $SCANNER_FILENAME tmp_${SCANNER_SCANID}_${SCANNER_PAGE}.rle
   exit 0
 fi
+
+# Every time we received a set of pages, record a unique destination filename.
+: "${DEST_FILENAME:=$(date "+%Y-%m-%d_%H%M%S")}"
+
+# Convert to TIFF
+python3 ../rle_to_tiff.py $SCANNER_XDPI $SCANNER_YDPI $SCANNER_WIDTH \
+    $(for i in $(seq 1 $SCANNER_PAGE); do echo tmp_${SCANNER_SCANID}_$i.rle; done) \
+    > tmp_$DEST_FILENAME.tiff
+
+# For black & white scans, nothing beats FAX group4 compression.
+mogrify -compress group4 tmp_$DEST_FILENAME.tiff
+
+# Store final results in a separate output directory. Make sure it exists.
+mkdir -p scans
+
+# Run tesseract for OCR. Update the language for better results.
+TESSERACT_LANGUAGE=deu
+tesseract -l $TESSERACT_LANGUAGE tmp_$DEST_FILENAME.tiff scans/$DEST_FILENAME pdf
+rm tmp_$DEST_FILENAME.tiff
 
 notify-send "Received $SCANNER_PAGE page(s) from $SCANNER_IP (${SCANNER_WIDTH}x${SCANNER_HEIGHT} px; ${SCANNER_XDPI}x${SCANNER_YDPI} DPI)"

@@ -7,6 +7,8 @@
 #ifndef BROTHER_EVENT_THREAD_H
 #define BROTHER_EVENT_THREAD_H
 
+struct event_thread;
+
 void event_thread_lib_init(void);
 void event_thread_lib_wait(void);
 void event_thread_lib_shutdown(void);
