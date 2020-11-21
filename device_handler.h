@@ -12,4 +12,6 @@
 void device_handler_init(const char *config_path);
 struct device *device_handler_add_device(struct device_config *config);
 
+extern uint16_t button_handler_port;
+
 #endif //BROTHER_DEVICE_HANDLER_H
