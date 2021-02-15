@@ -25,6 +25,7 @@ static void
 print_usage(void)
 {
     printf("Usage: brother [-c path/to/config/file]\n");
+    printf("       brother [-(v|h)]\n");
 }
 
 static void
@@ -40,12 +41,16 @@ main(int argc, char *argv[])
     int option = 0;
     const char *config_path = "brother.config";
 
-    while ((option = getopt(argc, argv, "c:h")) != -1) {
+    while ((option = getopt(argc, argv, "c:hvV")) != -1) {
         switch (option) {
         case 'c':
             config_path = optarg;
             break;
-        case 'h':
+        case 'h': // help
+            print_usage();
+            /* fall thru */
+        case 'v': // version
+        case 'V': // sometimes used as well
             print_version();
             exit(EXIT_SUCCESS);
         default:
