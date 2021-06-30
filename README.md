@@ -48,7 +48,7 @@ make install
 ```
 
 The driver **should** work for the most of Brother devices. 
-However, it has only been tested on the DCP-J105 and MFC-J430W.
+However, it has only been tested on the DCP-J105, MFC-J430W, and HL-L2380DW.
 
 If you have successfully run this driver with a different model,
 please open a github issue and provide debug output logs if possible, so that
