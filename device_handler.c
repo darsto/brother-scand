@@ -186,7 +186,7 @@ device_handler_add_device(struct device_config *config)
     status = snmp_get_printer_status(g_dev_handler.button_conn, buf,
                                      sizeof(buf), inet_addr(config->ip));
 
-    if (status != 10001 && status != 10006 && status != 40038) {  // 10001: normal. 10006: low ink, 40038: empty ink
+    if (status != 10001 && status != 10006 && status != 40000 && status != 40038 ) {  // 10001: normal. 10006: low ink. 40038: empty ink. 40000: unknown but OK.
       LOG_ERR("Error: device at %s is unreachable. (status: %d)\n", config->ip,
               status);
       return NULL;
@@ -261,7 +261,8 @@ device_handler_loop(void *arg)
           dev->next_ping_time = time_now + DEVICE_KEEPALIVE_DURATION_SEC;
           dev->status = snmp_get_printer_status(g_dev_handler.button_conn, buf,
                                                 sizeof(buf), dev->ip);
-          if (dev->status != 10001 && dev->status != 10006 && dev->status != 40038) {
+          if (dev->status != 10001 && dev->status != 10006
+		  && dev->status != 40000 && dev->status != 40038) {
             if (need_register) {
               // If the device is offline try re-establishing the connection
               // more frequently, so that we can re-register when it comes back
@@ -273,7 +274,8 @@ device_handler_loop(void *arg)
           }
         }
 
-        if (dev->status != 10001 && dev->status != 10006 && dev->status != 40038) {
+        if (dev->status != 10001 && dev->status != 10006
+	    && dev->status != 40000 && dev->status != 40038) {
           continue;
         }
 
