@@ -1,0 +1,4 @@
+[brscand]
+title=Brother Scanner Driver Service
+description=scanner driver
+ports=68,138,137,161,49424,54921,54925/udp

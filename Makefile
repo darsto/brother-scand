@@ -62,6 +62,11 @@ install: all
 	cp syslog.conf $(SYSLOGPATH)
 	echo -e "Now edit $(ETCDIR)/scanner.conf. Then run:\n  systemctl restart rsyslog\n  systemctl enable $(USER)"
 
+install_ufw:
+	cp brscand.ufw_profile /etc/ufw/applications.d/brscand
+	ufw app update brscand
+	ufw allow app brscand
+
 uninstall:
 	rm -ir $(ETCDIR) $(BINDIR)/brother-scan* $(SYSTEMDDPATH) $(SYSLOGPATH)
 	deluser $(USER)
