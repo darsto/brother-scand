@@ -4,15 +4,18 @@
  * that can be found in the LICENSE file.
  */
 
-#include <stdint.h>
-#include <memory.h>
-#include <stdio.h>
 #include <stdatomic.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+
 #include "ber/snmp.h"
-#include "log.h"
-#include "config.h"
 #include "connection.h"
+#include "log.h"
+#include "snmp.h"
+
+struct brother_conn;
 
 #define SNMP_PORT 161
 
@@ -40,7 +43,7 @@ snmp_get_printer_status(struct brother_conn *conn, uint8_t *buf, size_t buf_len,
 {
     uint8_t *buf_end = buf + buf_len - 1;
     struct snmp_msg_header msg_header = {0};
-    struct snmp_varbind varbind = {0};
+    struct snmp_varbind varbind = {{0}};
     size_t snmp_len;
     uint8_t *out;
     int msg_len, rc = -1;
@@ -83,76 +86,78 @@ snmp_get_printer_status(struct brother_conn *conn, uint8_t *buf, size_t buf_len,
     return rc;
 }
 
-int
-snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
-                             uint8_t *buf, size_t buf_len,
-                             const char **functions,
-                             in_addr_t dest_addr)
-{
-    uint8_t *buf_end = buf + buf_len - 1;
+int snmp_register_scanner_driver(struct brother_conn *conn, bool enabled,
+                                 const char **functions,
+                                 size_t functions_length, in_addr_t dest_addr) {
+  size_t buf_len = 512 + functions_length * 128;
+  uint8_t buf[buf_len];
+  uint8_t *buf_end = buf + buf_len - 1;
 
-    struct snmp_msg_header msg_header = {0};
-    struct snmp_varbind varbind[CONFIG_SCAN_MAX_FUNCS] = {0};
-    va_list args;
-    size_t snmp_len;
-    uint8_t *out;
-    uint32_t i, varbind_num;
-    int msg_len, rc = -1;
+  struct snmp_msg_header msg_header = {0};
+  struct snmp_varbind varbind[functions_length];
+  size_t snmp_len;
+  uint8_t *out;
+  uint32_t i, varbind_num;
+  int msg_len, rc = -1;
 
-    init_msg_header(&msg_header, "internal", SNMP_DATA_T_PDU_SET_REQUEST);
+  init_msg_header(&msg_header, "internal", SNMP_DATA_T_PDU_SET_REQUEST);
 
-    for (i = 0; i < 4; ++i) {
-        if (functions[i] == NULL || functions[i][0] == 0) {
-            break;
-        }
-
-        if (enabled) {
-            memcpy(varbind[i].oid, g_brRegisterKeyInfoOID,
-                   sizeof(g_brRegisterKeyInfoOID));
-        } else {
-            memcpy(varbind[i].oid, g_brUnregisterKeyInfoOID,
-                   sizeof(g_brUnregisterKeyInfoOID));
-        }
-
-        varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
-        varbind[i].value.s = functions[i];
+  for (i = 0; i < functions_length; ++i) {
+    if (functions[i] == NULL || functions[i][0] == 0) {
+      break;
     }
 
-    varbind_num = i;
-    out = snmp_encode_msg(buf_end, &msg_header, varbind_num, varbind);
-    snmp_len = buf_end - out + 1;
-
-    msg_len = brother_conn_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
-    if (msg_len < 0 || (size_t) msg_len != snmp_len) {
-        perror("sendto");
-        return -1;
+    if (enabled) {
+      memcpy(varbind[i].oid, g_brRegisterKeyInfoOID,
+             sizeof(g_brRegisterKeyInfoOID));
+    } else {
+      memcpy(varbind[i].oid, g_brUnregisterKeyInfoOID,
+             sizeof(g_brUnregisterKeyInfoOID));
     }
 
-    rc = brother_conn_poll(conn, 3);
-    if (rc <= 0) {
-        LOG_ERR("Failed to receive SNMP status reponse.\n");
-        return -1;
-    }
+    varbind[i].value_type = SNMP_DATA_T_OCTET_STRING;
+    varbind[i].value.s = functions[i];
+  }
 
-    msg_len = brother_conn_receive(conn, buf, buf_len);
-    if (msg_len < 6) {
-        perror("recvfrom");
-        return -1;
-    }
+  varbind_num = i;
+  out = snmp_encode_msg(buf_end, &msg_header, varbind_num, varbind);
+  snmp_len = buf_end - out + 1;
 
-    if (!enabled) {
-        /* unregister msg is not implemented for some scanners,
-         * ignore all errors */
-        return 0;
-    }
+  msg_len =
+      brother_conn_sendto(conn, out, snmp_len, dest_addr, htons(SNMP_PORT));
+  if (msg_len < 0 || (size_t)msg_len != snmp_len) {
+    perror("sendto");
+    return -1;
+  }
 
-    snmp_decode_msg(buf, msg_len, &msg_header, &varbind_num, varbind);
-    if (msg_header.error_index != 0 && msg_header.error_status != 0) {
-        LOG_ERR("Received invalid register SNMP response\n");
-        DUMP_ERR(buf, (size_t) msg_len);
-        return -1;
-    }
+  rc = brother_conn_poll(conn, 3);
+  if (rc <= 0) {
+    LOG_ERR("Failed to receive SNMP status reponse.\n");
+    return -1;
+  }
 
-    rc = msg_len;
-    return rc;
+  msg_len = brother_conn_receive(conn, buf, buf_len);
+  if (msg_len < 6) {
+    perror("recvfrom");
+    return -1;
+  }
+
+  if (!enabled) {
+    /* unregister msg is not implemented for some scanners,
+     * ignore all errors */
+    return 0;
+  }
+
+  snmp_decode_msg(buf, msg_len, &msg_header, &varbind_num, varbind);
+  if (msg_header.error_index != 0 && msg_header.error_status != 0) {
+    LOG_ERR(
+        "Received invalid register SNMP response: error_index=%d, "
+        "error_status=%d\n",
+        msg_header.error_index, msg_header.error_status);
+    DUMP_ERR(buf, (size_t)msg_len);
+    return -1;
+  }
+
+  rc = msg_len;
+  return rc;
 }

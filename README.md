@@ -40,19 +40,38 @@ image data within the same (original) connection. But only on Windows... Well, n
  * Minimal resource usage when idle
  * Configurable hostname :)
 
-# Installation
+## Installation
 ```
-git clone https://github.com/darsto/brother-scanner-driver.git
-cd brother-scanner-driver
-make
-cd out
-vi ./brother.config
-chmod +x ./scanhook.sh
-../build/brother-scand
+git clone https://github.com/rumpeltux/brother-scand.git
+cd brother-scand
+git submodule init
+git submodule update
+make && sudo make install
 ```
 
 The driver **should** work for the most of Brother devices. 
-However, it has only been tested on the DCP-J105.
+However, it has only been tested on the DCP-J105, MFC-J430W, and HL-L2380DW.
 
 If you have successfully run this driver with a different model,
-please open a github issue.
+please open a github issue and provide debug output logs if possible, so that
+we can confirm behavior and add a testcase.
+
+## Troubleshooting
+
+* Use `build/brother-scan-cli -c your.config` to test your configuration
+  without having to run the service.
+* Add `-d` to your commandline (both for `build/brother-scan-cli` or in the
+  `/etc/brother-scand/scanner.config` file) to collect debug output.
+* Logs of the system service should be located in `/var/log/brother-scand.log`
+
+## Running tests
+
+Tests are written in C++ for convenience and use the GoogleTest framework.
+The goal of those tests is to make sure the project keeps working even in the
+absence of actual scanners to test with.
+
+    sudo apt install cmake googletest
+    make test
+
+NOTE: Since tests rely on specific ports and their cleanup isn't always clean,
+    running them repeatly may be flaky.

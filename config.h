@@ -12,13 +12,9 @@
 #define CONFIG_HOSTNAME_LENGTH 16
 #define CONFIG_SCAN_MAX_PARAMS 16
 #define CONFIG_SCAN_MAX_FUNCS 4
-#define CONFIG_SCAN_FUNC_IMAGE 0
-#define CONFIG_SCAN_FUNC_OCR 1
-#define CONFIG_SCAN_FUNC_EMAIL 2
-#define CONFIG_SCAN_FUNC_FILE 3
-#define CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC 3
-#define CONFIG_NETWORK_DEFAULT_PAGE_INIT_TIMEOUT 5
-#define CONFIG_NETWORK_DEFAULT_PAGE_FINISH_TIMEOUT 20
+#define CONFIG_NETWORK_DEFAULT_TIMEOUT_SEC 5
+#define CONFIG_NETWORK_DEFAULT_PAGE_INIT_TIMEOUT 15
+#define CONFIG_NETWORK_DEFAULT_PAGE_FINISH_TIMEOUT 60
 
 struct scan_param {
     char id;
@@ -27,23 +23,47 @@ struct scan_param {
 
 struct device_config {
     char *ip;
-    char *password;
     unsigned timeout;
-    unsigned page_init_timeout;
-    unsigned page_finish_timeout;
-    struct scan_param scan_params[CONFIG_SCAN_MAX_PARAMS];
-    char *scan_funcs[CONFIG_SCAN_MAX_FUNCS];
+    TAILQ_HEAD(, item_config) items;
     TAILQ_ENTRY(device_config) tailq;
 };
 
+enum scan_func {
+  SCAN_FUNC_INVALID = -1,
+  SCAN_FUNC_IMAGE = 0,
+  SCAN_FUNC_OCR = 1,
+  SCAN_FUNC_EMAIL = 2,
+  SCAN_FUNC_FILE = 3
+};
+
+struct item_config {
+  char *password;
+  char *hostname;  // the name displayed on the device
+
+  enum scan_func scan_func;
+
+  unsigned page_init_timeout;
+  unsigned page_finish_timeout;
+  struct scan_param scan_params[CONFIG_SCAN_MAX_PARAMS];
+  // Which script to execute after receiving a page or set of pages.
+  char *scan_command;
+  TAILQ_ENTRY(item_config) tailq;
+
+  // Registration number for this device. Filled in device_handler.c
+  unsigned appnum;
+};
+
 struct brother_config {
-    char hostname[CONFIG_HOSTNAME_LENGTH];
     TAILQ_HEAD(, device_config) devices;
 };
 
 extern struct brother_config g_config;
 extern const char *g_scan_func_str[CONFIG_SCAN_MAX_FUNCS];
 
+enum scan_func config_get_scan_func_by_name(const char *name);
+const struct item_config *config_find_by_func_and_name(
+    const struct device_config *dev_config, enum scan_func func,
+    const char *name);
 int config_init(const char *config_path);
 
 #endif //BROTHER_CONFIG_H

@@ -4,15 +4,16 @@
  * that can be found in the LICENSE file.
  */
 
-#include <unistd.h>
-#include <stdio.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <stdlib.h>
 #include <pthread.h>
 #include <semaphore.h>
-#include "event_thread.h"
+#include <stdatomic.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include "con_queue.h"
+#include "event_thread.h"
 #include "log.h"
 
 #define MAX_EVENT_THREADS 32
@@ -144,7 +145,6 @@ event_thread_loop(void *arg)
 {
     struct event_thread *thread = arg;
     struct event *event;
-    sigset_t sigset;
 
     sem_init(&thread->sem, 0, 0);
 
@@ -182,7 +182,7 @@ event_thread_create(const char *name, void (*update_cb)(void *),
     thread_id = atomic_fetch_add(&g_thread_cnt, 1);
     if (thread_id >= MAX_EVENT_THREADS) {
         LOG_FATAL("Reached the thread limit (%d).\n", MAX_EVENT_THREADS);
-        goto name_err;
+        goto err;
     }
 
     thread = &g_threads[thread_id];
@@ -224,6 +224,10 @@ err:
 int
 event_thread_stop(struct event_thread *thread)
 {
+  if (!thread) {
+    LOG_ERR("No thread to stop.\n");
+    return -1;
+  }
     if (thread->state == EVENT_THREAD_STOPPED) {
         LOG_ERR("Thread %p is not running.\n", (void *)thread);
         return -1;
